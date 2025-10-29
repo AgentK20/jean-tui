@@ -542,6 +542,149 @@ func (m Model) handleModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// handleSearchBasedModalInput is a shared handler for modals with search/filter functionality
+// Used by: branchSelectModal, checkoutBranchModal, changeBaseBranchModal
+func (m Model) handleSearchBasedModalInput(msg tea.KeyMsg, config searchModalConfig) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case "esc":
+		m.modal = noModal
+		m.searchInput.Blur()
+		return m, nil
+
+	case "up", "k":
+		if m.modalFocused == 0 {
+			// In search input, move focus to list
+			m.modalFocused = 1
+			m.searchInput.Blur()
+		} else if m.modalFocused == 1 && m.branchIndex > 0 {
+			// In list, move selection up
+			m.branchIndex--
+		}
+		return m, nil
+
+	case "down", "j":
+		if m.modalFocused == 0 {
+			// In search input, move focus to list
+			m.modalFocused = 1
+			m.searchInput.Blur()
+		} else if m.modalFocused == 1 {
+			// In list, move selection down
+			branches := m.filteredBranches
+			if len(branches) == 0 {
+				branches = m.branches
+			}
+			if m.branchIndex < len(branches)-1 {
+				m.branchIndex++
+			}
+		}
+		return m, nil
+
+	case "tab":
+		// Cycle: search -> list -> action button -> cancel button -> search
+		m.modalFocused = (m.modalFocused + 1) % 4
+		if m.modalFocused == 0 {
+			m.searchInput.Focus()
+		} else {
+			m.searchInput.Blur()
+		}
+		return m, nil
+
+	case "enter":
+		if m.modalFocused == 2 {
+			// Action button: Execute the configured action
+			branch := m.selectedBranch()
+			if branch == "" {
+				return m, nil
+			}
+			m.modal = noModal
+			m.searchInput.Blur()
+			return config.onConfirm(m, branch)
+		} else if m.modalFocused == 3 {
+			// Cancel button
+			m.modal = noModal
+			m.searchInput.Blur()
+			return m, nil
+		} else if m.modalFocused == 0 || m.modalFocused == 1 {
+			// In search input or list: move focus to action button
+			m.modalFocused = 2
+			m.searchInput.Blur()
+			return m, nil
+		}
+	}
+
+	// Handle search input typing
+	// Pass all non-navigation keys to search input when in search or list mode
+	if m.modalFocused == 0 || m.modalFocused == 1 {
+		// Check if this is a navigation key that's already been handled
+		key := msg.String()
+		isNavigationKey := key == "up" || key == "k" || key == "down" || key == "j" ||
+			key == "tab" || key == "enter" || key == "esc"
+
+		if !isNavigationKey {
+			// Pass to search input for typing
+			m.searchInput.Focus()
+			m.searchInput, cmd = m.searchInput.Update(msg)
+			// Filter branches based on search
+			m.filteredBranches = m.filterBranches(m.searchInput.Value())
+			// Reset branch index when filter changes
+			m.branchIndex = 0
+			m.modalFocused = 0 // Ensure we're tracking search as focused
+		}
+	}
+
+	return m, cmd
+}
+
+// handleListSelectionModalInput is a shared handler for modals with simple list selection
+// Used by: sessionListModal, editorSelectModal
+func (m Model) handleListSelectionModalInput(msg tea.KeyMsg, config listSelectionConfig) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.modal = noModal
+		return m, nil
+
+	case "up", "k":
+		if config.getCurrentIndex() > 0 {
+			config.decrementIndex(&m)
+		}
+		return m, nil
+
+	case "down", "j":
+		if config.getCurrentIndex() < config.getItemCount(m)-1 {
+			config.incrementIndex(&m)
+		}
+		return m, nil
+
+	case "enter":
+		return config.onConfirm(m)
+
+	default:
+		// Allow custom key handling (e.g., "d" for delete in session list)
+		if config.onCustomKey != nil {
+			return config.onCustomKey(m, msg.String())
+		}
+	}
+
+	return m, nil
+}
+
+// searchModalConfig contains configuration for search-based modals
+type searchModalConfig struct {
+	onConfirm func(m Model, selectedBranch string) (tea.Model, tea.Cmd)
+}
+
+// listSelectionConfig contains configuration for list selection modals
+type listSelectionConfig struct {
+	getCurrentIndex func() int
+	getItemCount    func(m Model) int
+	incrementIndex  func(m *Model)
+	decrementIndex  func(m *Model)
+	onConfirm       func(m Model) (tea.Model, tea.Cmd)
+	onCustomKey     func(m Model, key string) (tea.Model, tea.Cmd) // Optional
+}
+
 func (m Model) handleCreateModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
@@ -673,237 +816,64 @@ func (m Model) handleDeleteModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleBranchSelectModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
-	switch msg.String() {
-	case "esc":
-		m.modal = noModal
-		m.searchInput.Blur()
-		return m, nil
-
-	case "up", "k":
-		if m.modalFocused == 0 {
-			// In search input, move focus down to list
-			m.modalFocused = 1
-			m.searchInput.Blur()
-		} else if m.modalFocused == 1 && m.branchIndex > 0 {
-			// In list, move selection up
-			m.branchIndex--
-		}
-
-	case "down", "j":
-		if m.modalFocused == 0 {
-			// In search input, move focus down to list
-			m.modalFocused = 1
-			m.searchInput.Blur()
-		} else if m.modalFocused == 1 {
-			// In list, move selection down
-			branches := m.filteredBranches
-			if len(branches) == 0 {
-				branches = m.branches
-			}
-			if m.branchIndex < len(branches)-1 {
-				m.branchIndex++
-			}
-		}
-
-	case "tab":
-		// Cycle: search -> list -> OK button -> Cancel button -> search
-		m.modalFocused = (m.modalFocused + 1) % 4
-		if m.modalFocused == 0 {
-			m.searchInput.Focus()
-		} else {
-			m.searchInput.Blur()
-		}
-
-	case "enter":
-		if m.modalFocused == 2 {
-			// OK button: Select branch and create worktree directly with random name
-			branch := m.selectedBranch()
-			if branch == "" {
-				return m, nil
-			}
-
+	config := searchModalConfig{
+		onConfirm: func(m Model, branch string) (tea.Model, tea.Cmd) {
 			// Generate random path
 			path, err := m.gitManager.GetDefaultPath(branch)
 			if err != nil {
 				m.status = "Failed to generate workspace path"
 				return m, nil
 			}
-
-			m.modal = noModal
-			m.searchInput.Blur()
 			return m, m.createWorktree(path, branch, false)
-		} else if m.modalFocused == 3 {
-			// Cancel button
-			m.modal = noModal
-			m.searchInput.Blur()
-			return m, nil
-		} else if m.modalFocused == 0 || m.modalFocused == 1 {
-			// In search input or list: move focus to OK button
-			m.modalFocused = 2
-			m.searchInput.Blur()
-			return m, nil
-		}
+		},
 	}
-
-	// Handle search input typing
-	// Pass all non-navigation keys to search input when in search or list mode
-	if m.modalFocused == 0 || m.modalFocused == 1 {
-		// Check if this is a navigation key that's already been handled
-		key := msg.String()
-		isNavigationKey := key == "up" || key == "k" || key == "down" || key == "j" ||
-			key == "tab" || key == "enter" || key == "esc"
-
-		if !isNavigationKey {
-			// Pass to search input for typing
-			m.searchInput.Focus()
-			m.searchInput, cmd = m.searchInput.Update(msg)
-			// Filter branches based on search
-			m.filteredBranches = m.filterBranches(m.searchInput.Value())
-			// Reset branch index when filter changes
-			m.branchIndex = 0
-			m.modalFocused = 0 // Ensure we're tracking search as focused
-		}
-	}
-
-	return m, cmd
+	return m.handleSearchBasedModalInput(msg, config)
 }
 
 func (m Model) handleCheckoutBranchModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
-	switch msg.String() {
-	case "esc":
-		m.modal = noModal
-		m.searchInput.Blur()
-		return m, nil
-
-	case "up", "k":
-		if m.modalFocused == 0 {
-			// In search input, move focus down to list
-			m.modalFocused = 1
-			m.searchInput.Blur()
-		} else if m.modalFocused == 1 && m.branchIndex > 0 {
-			// In list, move selection up
-			m.branchIndex--
-		}
-
-	case "down", "j":
-		if m.modalFocused == 0 {
-			// In search input, move focus down to list
-			m.modalFocused = 1
-			m.searchInput.Blur()
-		} else if m.modalFocused == 1 {
-			// In list, move selection down
-			branches := m.filteredBranches
-			if len(branches) == 0 {
-				branches = m.branches
-			}
-			if m.branchIndex < len(branches)-1 {
-				m.branchIndex++
-			}
-		}
-
-	case "tab":
-		// Cycle: search -> list -> OK button -> Cancel button -> search
-		m.modalFocused = (m.modalFocused + 1) % 4
-		if m.modalFocused == 0 {
-			m.searchInput.Focus()
-		} else {
-			m.searchInput.Blur()
-		}
-
-	case "enter":
-		if m.modalFocused == 2 {
-			// Checkout button: Checkout the selected branch in main repository
-			branch := m.selectedBranch()
-			if branch == "" {
-				return m, nil
-			}
-
-			m.modal = noModal
-			m.searchInput.Blur()
+	config := searchModalConfig{
+		onConfirm: func(m Model, branch string) (tea.Model, tea.Cmd) {
 			m.status = "Checking out branch: " + branch
 			return m, m.checkoutBranch(branch)
-		} else if m.modalFocused == 3 {
-			// Cancel
-			m.modal = noModal
-			m.searchInput.Blur()
-			return m, nil
-		} else if m.modalFocused == 0 || m.modalFocused == 1 {
-			// In search input or list: move focus to Checkout button
-			m.modalFocused = 2
-			m.searchInput.Blur()
-			return m, nil
-		}
+		},
 	}
-
-	// Handle search input typing
-	// Pass all non-navigation keys to search input when in search or list mode
-	if m.modalFocused == 0 || m.modalFocused == 1 {
-		// Check if this is a navigation key that's already been handled
-		key := msg.String()
-		isNavigationKey := key == "up" || key == "k" || key == "down" || key == "j" ||
-			key == "tab" || key == "enter" || key == "esc"
-
-		if !isNavigationKey {
-			// Pass to search input for typing
-			m.searchInput.Focus()
-			m.searchInput, cmd = m.searchInput.Update(msg)
-			// Filter branches based on search
-			m.filteredBranches = m.filterBranches(m.searchInput.Value())
-			// Reset branch index when search changes
-			m.branchIndex = 0
-			m.modalFocused = 0 // Ensure we're tracking search as focused
-		}
-	}
-
-	return m, cmd
+	return m.handleSearchBasedModalInput(msg, config)
 }
 
 func (m Model) handleSessionListModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
-		m.modal = noModal
-		return m, nil
-
-	case "up", "k":
-		if m.sessionIndex > 0 {
-			m.sessionIndex--
-		}
-
-	case "down", "j":
-		if m.sessionIndex < len(m.sessions)-1 {
-			m.sessionIndex++
-		}
-
-	case "enter":
-		// Attach to selected session
-		if m.sessionIndex >= 0 && m.sessionIndex < len(m.sessions) {
-			sess := m.sessions[m.sessionIndex]
-			// Attach via tmux
-			if err := m.sessionManager.Attach(sess.Name); err != nil {
-				m.status = "Failed to attach to session"
+	config := listSelectionConfig{
+		getCurrentIndex: func() int { return m.sessionIndex },
+		getItemCount:    func(m Model) int { return len(m.sessions) },
+		incrementIndex:  func(m *Model) { m.sessionIndex++ },
+		decrementIndex:  func(m *Model) { m.sessionIndex-- },
+		onConfirm: func(m Model) (tea.Model, tea.Cmd) {
+			if m.sessionIndex >= 0 && m.sessionIndex < len(m.sessions) {
+				sess := m.sessions[m.sessionIndex]
+				// Attach via tmux
+				if err := m.sessionManager.Attach(sess.Name); err != nil {
+					m.status = "Failed to attach to session"
+					return m, nil
+				}
+				return m, tea.Quit
 			}
-			return m, tea.Quit
-		}
-
-	case "d":
-		// Kill selected session
-		if m.sessionIndex >= 0 && m.sessionIndex < len(m.sessions) {
-			sess := m.sessions[m.sessionIndex]
-			if err := m.sessionManager.Kill(sess.Name); err != nil {
-				m.status = "Failed to kill session"
-			} else {
-				m.status = "Session killed"
-				// Reload sessions
-				return m, m.loadSessions
+			return m, nil
+		},
+		onCustomKey: func(m Model, key string) (tea.Model, tea.Cmd) {
+			if key == "d" && m.sessionIndex >= 0 && m.sessionIndex < len(m.sessions) {
+				// Kill selected session
+				sess := m.sessions[m.sessionIndex]
+				if err := m.sessionManager.Kill(sess.Name); err != nil {
+					m.status = "Failed to kill session"
+				} else {
+					m.status = "Session killed"
+					// Reload sessions
+					return m, m.loadSessions
+				}
 			}
-		}
+			return m, nil
+		},
 	}
-
-	return m, nil
+	return m.handleListSelectionModalInput(msg, config)
 }
 
 func (m Model) handleRenameModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -963,143 +933,49 @@ func (m Model) handleRenameModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleChangeBaseBranchModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
-	switch msg.String() {
-	case "esc":
-		m.modal = noModal
-		m.searchInput.Blur()
-		return m, nil
-
-	case "up", "k":
-		if m.modalFocused == 0 {
-			// In search input, move focus down to list
-			m.modalFocused = 1
-			m.searchInput.Blur()
-		} else if m.modalFocused == 1 && m.branchIndex > 0 {
-			// In list, move selection up
-			m.branchIndex--
-		}
-
-	case "down", "j":
-		if m.modalFocused == 0 {
-			// In search input, move focus down to list
-			m.modalFocused = 1
-			m.searchInput.Blur()
-		} else if m.modalFocused == 1 {
-			// In list, move selection down
-			branches := m.filteredBranches
-			if len(branches) == 0 {
-				branches = m.branches
-			}
-			if m.branchIndex < len(branches)-1 {
-				m.branchIndex++
-			}
-		}
-
-	case "tab":
-		// Cycle: search -> list -> Set button -> Cancel button -> search
-		m.modalFocused = (m.modalFocused + 1) % 4
-		if m.modalFocused == 0 {
-			m.searchInput.Focus()
-		} else {
-			m.searchInput.Blur()
-		}
-
-	case "enter":
-		if m.modalFocused == 2 {
-			// Set button: Set the selected branch as base branch
-			newBaseBranch := m.selectedBranch()
-			if newBaseBranch == "" {
-				return m, nil
-			}
-
-			m.baseBranch = newBaseBranch
+	config := searchModalConfig{
+		onConfirm: func(m Model, branch string) (tea.Model, tea.Cmd) {
+			m.baseBranch = branch
 
 			// Save to config
 			if m.configManager != nil {
-				if err := m.configManager.SetBaseBranch(m.repoPath, newBaseBranch); err != nil {
-					m.status = "Base branch set to: " + newBaseBranch + " (warning: failed to save)"
+				if err := m.configManager.SetBaseBranch(m.repoPath, branch); err != nil {
+					m.status = "Base branch set to: " + branch + " (warning: failed to save)"
 				} else {
-					m.status = "Base branch set to: " + newBaseBranch + " (saved)"
+					m.status = "Base branch set to: " + branch + " (saved)"
 				}
 			} else {
-				m.status = "Base branch set to: " + newBaseBranch
+				m.status = "Base branch set to: " + branch
 			}
-
-			m.modal = noModal
-			m.searchInput.Blur()
 			return m, nil
-		} else if m.modalFocused == 3 {
-			// Cancel button
-			m.modal = noModal
-			m.searchInput.Blur()
-			return m, nil
-		} else if m.modalFocused == 0 || m.modalFocused == 1 {
-			// In search input or list: move focus to Set button
-			m.modalFocused = 2
-			m.searchInput.Blur()
-			return m, nil
-		}
+		},
 	}
-
-	// Handle search input typing
-	// Pass all non-navigation keys to search input when in search or list mode
-	if m.modalFocused == 0 || m.modalFocused == 1 {
-		// Check if this is a navigation key that's already been handled
-		key := msg.String()
-		isNavigationKey := key == "up" || key == "k" || key == "down" || key == "j" ||
-			key == "tab" || key == "enter" || key == "esc"
-
-		if !isNavigationKey {
-			// Pass to search input for typing
-			m.searchInput.Focus()
-			m.searchInput, cmd = m.searchInput.Update(msg)
-			// Filter branches based on search
-			m.filteredBranches = m.filterBranches(m.searchInput.Value())
-			// Reset branch index when search changes
-			m.branchIndex = 0
-			m.modalFocused = 0 // Ensure we're tracking search as focused
-		}
-	}
-
-	return m, cmd
+	return m.handleSearchBasedModalInput(msg, config)
 }
 
 func (m Model) handleEditorSelectModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "esc", "q":
-		m.modal = noModal
-		return m, nil
-
-	case "up", "k":
-		if m.editorIndex > 0 {
-			m.editorIndex--
-		}
-
-	case "down", "j":
-		if m.editorIndex < len(m.editors)-1 {
-			m.editorIndex++
-		}
-
-	case "enter":
-		// Save the selected editor
-		if m.editorIndex >= 0 && m.editorIndex < len(m.editors) {
-			selectedEditor := m.editors[m.editorIndex]
-			if m.configManager != nil {
-				if err := m.configManager.SetEditor(m.repoPath, selectedEditor); err != nil {
-					m.err = err
-					m.status = "Failed to save editor preference"
-				} else {
-					m.status = "Editor set to: " + selectedEditor
+	config := listSelectionConfig{
+		getCurrentIndex: func() int { return m.editorIndex },
+		getItemCount:    func(m Model) int { return len(m.editors) },
+		incrementIndex:  func(m *Model) { m.editorIndex++ },
+		decrementIndex:  func(m *Model) { m.editorIndex-- },
+		onConfirm: func(m Model) (tea.Model, tea.Cmd) {
+			if m.editorIndex >= 0 && m.editorIndex < len(m.editors) {
+				selectedEditor := m.editors[m.editorIndex]
+				if m.configManager != nil {
+					if err := m.configManager.SetEditor(m.repoPath, selectedEditor); err != nil {
+						m.err = err
+						m.status = "Failed to save editor preference"
+					} else {
+						m.status = "Editor set to: " + selectedEditor
+					}
 				}
 			}
-		}
-		m.modal = noModal
-		return m, nil
+			m.modal = noModal
+			return m, nil
+		},
 	}
-
-	return m, nil
+	return m.handleListSelectionModalInput(msg, config)
 }
 
 func (m Model) handleSettingsModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
