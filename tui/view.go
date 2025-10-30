@@ -26,7 +26,7 @@ func (m Model) View() string {
 	rightPanel := m.renderDetails()
 
 	// Calculate panel dimensions
-	panelHeight := m.height - 2 // Base height with some padding
+	panelHeight := m.height - 4 // Reserve space for help bar (2 lines) + top spacing (2 lines)
 
 	panelWidth := (m.width - 6) / 2
 
@@ -44,9 +44,9 @@ func (m Model) View() string {
 	// Combine panels horizontally
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanelStyled, rightPanelStyled)
 
-	// Add minimal help bar at the bottom
+	// Add minimal help bar at the bottom with top spacing for border visibility
 	helpBar := m.renderMinimalHelpBar()
-	mainView := lipgloss.JoinVertical(lipgloss.Left, panels, helpBar)
+	mainView := lipgloss.JoinVertical(lipgloss.Left, "\n", panels, helpBar)
 
 	// If notification exists, render it as an overlay on top of panels
 	if m.notification != nil {
@@ -1637,8 +1637,9 @@ func (m Model) renderHelperModal() string {
 				{"b", "Change base branch for new worktrees"},
 				{"B", "Checkout/switch branch in main repo"},
 				{"c", "Commit all uncommitted changes"},
-				{"p", "Merge base branch into current worktree"},
+				{"p", "Push to remote (with AI branch naming)"},
 				{"P", "Push & create draft PR"},
+				{"u", "Update from base branch (pull/merge)"},
 				{"v", "Open PR in browser"},
 				{"r", "Refresh status (fetch from remote, no merging)"},
 				{"R", "Rename current branch"},
@@ -1738,8 +1739,21 @@ func (m Model) renderScriptsModal() string {
 			b.WriteString("\n")
 		}
 
+		// Show automatic scripts section (view-only)
+		if onWorktreeCreate := m.scriptConfig.GetScript("onWorktreeCreate"); onWorktreeCreate != "" {
+			b.WriteString(detailKeyStyle.Render("Automatic Scripts (view-only):"))
+			b.WriteString("\n")
+			displayText := fmt.Sprintf("  ⚙ onWorktreeCreate")
+			dimmedStyle := normalItemStyle.Copy().Foreground(mutedColor)
+			b.WriteString(dimmedStyle.Render(displayText))
+			b.WriteString("\n")
+			b.WriteString(detailKeyStyle.Render("  Command: "))
+			b.WriteString(detailValueStyle.Render(onWorktreeCreate))
+			b.WriteString("\n\n")
+		}
+
 		// Show available scripts section
-		if m.scriptConfig.HasScripts() {
+		if len(m.scriptNames) > 0 {
 			b.WriteString(detailKeyStyle.Render("Available Scripts:"))
 			b.WriteString("\n")
 

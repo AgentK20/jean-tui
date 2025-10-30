@@ -317,7 +317,16 @@ func NewModel(repoPath string, autoClaude bool) Model {
 	// Load scripts from gcool.json
 	if scriptConfig, err := config.LoadScripts(absoluteRepoPath); err == nil {
 		m.scriptConfig = scriptConfig
-		m.scriptNames = scriptConfig.GetScriptNames()
+		allScripts := scriptConfig.GetScriptNames()
+
+		// Filter out automatic-only scripts that should not be manually runnable
+		m.scriptNames = make([]string, 0, len(allScripts))
+		for _, name := range allScripts {
+			// Exclude onWorktreeCreate - it's automatic-only
+			if name != "onWorktreeCreate" {
+				m.scriptNames = append(m.scriptNames, name)
+			}
+		}
 	}
 
 	return m
@@ -499,6 +508,33 @@ type (
 	scriptOutputMsg struct {
 		scriptName string
 		output     string
+	}
+
+	// Push-only messages (without PR creation)
+	pushBranchNameGeneratedMsg struct {
+		oldBranchName string
+		newBranchName string
+		worktreePath  string
+		err           error
+	}
+
+	pushRemoteBranchDeletedMsg struct {
+		oldBranchName string
+		newBranchName string
+		worktreePath  string
+		err           error
+	}
+
+	pushBranchRenamedMsg struct {
+		oldBranchName string
+		newBranchName string
+		worktreePath  string
+		err           error
+	}
+
+	pushCompletedMsg struct {
+		branch string
+		err    error
 	}
 )
 
@@ -987,6 +1023,100 @@ func (m Model) refreshPRStatuses() tea.Cmd {
 		}
 
 		return prStatusesRefreshedMsg{err: nil}
+	}
+}
+
+// Push-only command functions (without PR creation)
+
+// generateBranchNameForPush generates an AI branch name for push operation
+func (m Model) generateBranchNameForPush(worktreePath, oldBranch, baseBranch string) tea.Cmd {
+	return func() tea.Msg {
+		apiKey := m.configManager.GetOpenRouterAPIKey()
+		if apiKey == "" {
+			return pushBranchNameGeneratedMsg{
+				oldBranchName: oldBranch,
+				worktreePath:  worktreePath,
+				err:           fmt.Errorf("API key not configured"),
+			}
+		}
+
+		// Get diff (uncommitted first, then from base)
+		diff := ""
+		uncommittedDiff, _ := m.gitManager.GetDiff(worktreePath)
+		if uncommittedDiff != "" {
+			diff = uncommittedDiff
+		} else if baseBranch != "" {
+			baseDiff, _ := m.gitManager.GetDiffFromBase(worktreePath, baseBranch)
+			diff = baseDiff
+		}
+
+		// No changes to generate from
+		if diff == "" {
+			return pushBranchNameGeneratedMsg{
+				oldBranchName: oldBranch,
+				worktreePath:  worktreePath,
+				err:           fmt.Errorf("no changes to generate name from"),
+			}
+		}
+
+		// Call AI
+		model := m.configManager.GetOpenRouterModel()
+		client := openrouter.NewClient(apiKey, model)
+		newName, err := client.GenerateBranchName(diff)
+
+		return pushBranchNameGeneratedMsg{
+			oldBranchName: oldBranch,
+			newBranchName: newName,
+			worktreePath:  worktreePath,
+			err:           err,
+		}
+	}
+}
+
+// deleteRemoteBranchForPush deletes the old remote branch during push operation
+func (m Model) deleteRemoteBranchForPush(worktreePath, oldBranch, newBranch string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.gitManager.DeleteRemoteBranch(worktreePath, oldBranch)
+		return pushRemoteBranchDeletedMsg{
+			oldBranchName: oldBranch,
+			newBranchName: newBranch,
+			worktreePath:  worktreePath,
+			err:           err,
+		}
+	}
+}
+
+// renameBranchForPush renames a branch during push operation
+func (m Model) renameBranchForPush(oldName, newName, worktreePath string) tea.Cmd {
+	return func() tea.Msg {
+		err := m.gitManager.RenameBranchInWorktree(worktreePath, oldName, newName)
+		return pushBranchRenamedMsg{
+			oldBranchName: oldName,
+			newBranchName: newName,
+			worktreePath:  worktreePath,
+			err:           err,
+		}
+	}
+}
+
+// pushBranch pushes the branch to remote without creating a PR
+func (m Model) pushBranch(worktreePath, branch string) tea.Cmd {
+	return func() tea.Msg {
+		// Check if the branch has any commits
+		hasCommits, err := m.gitManager.HasCommits(worktreePath)
+		if err != nil {
+			return pushCompletedMsg{branch: branch, err: fmt.Errorf("failed to check for commits: %w", err)}
+		}
+		if !hasCommits {
+			return pushCompletedMsg{branch: branch, err: fmt.Errorf("no commits to push")}
+		}
+
+		// Push the branch
+		if err := m.gitManager.Push(worktreePath, branch); err != nil {
+			return pushCompletedMsg{branch: branch, err: fmt.Errorf("failed to push: %w", err)}
+		}
+
+		return pushCompletedMsg{branch: branch, err: nil}
 	}
 }
 

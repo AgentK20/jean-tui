@@ -105,8 +105,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case worktreeCreatedMsg:
 		if msg.err != nil {
-			cmd = m.showErrorNotification("Failed to create worktree", 4*time.Second)
-			return m, cmd
+			// Check if this is a setup script error (warning) or a git error (error)
+			errMsg := msg.err.Error()
+			if strings.Contains(errMsg, "setup script failed") {
+				// Setup script failed - show warning but worktree was created
+				// Extract just the relevant error message (skip "setup script failed: " prefix)
+				warningMsg := strings.TrimPrefix(errMsg, "setup script failed: ")
+				cmd = m.showWarningNotification(fmt.Sprintf("Worktree created but setup script failed:\n%s", warningMsg))
+				m.modal = noModal
+				m.lastCreatedBranch = msg.branch
+				// Still refresh worktrees since the worktree was created successfully
+				return m, tea.Batch(cmd, m.loadWorktreesLightweight)
+			} else {
+				// Git worktree creation failed - show error
+				cmd = m.showErrorNotification("Failed to create worktree", 4*time.Second)
+				return m, cmd
+			}
 		} else {
 			cmd = m.showSuccessNotification("Worktree created successfully", 3*time.Second)
 			m.modal = noModal
@@ -400,6 +414,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
+			// Check if we're committing before push-only (no PR)
+			if m.commitBeforePR && m.prCreationPending == "" {
+				// Get current worktree
+				wt := m.selectedWorktree()
+				if wt == nil {
+					return m, cmd
+				}
+
+				// Reset commit before PR flag
+				m.commitBeforePR = false
+
+				// Check if we should do AI renaming
+				hasAPIKey := m.configManager != nil && m.configManager.GetOpenRouterAPIKey() != ""
+				aiEnabled := m.configManager != nil && m.configManager.GetAIBranchNameEnabled()
+				isRandomName := m.gitManager.IsRandomBranchName(wt.Branch)
+				shouldAIRename := hasAPIKey && aiEnabled && isRandomName
+
+				if shouldAIRename {
+					// Start AI rename flow before push
+					notifyCmd := m.showInfoNotification("🤖 Generating semantic branch name...")
+					return m, tea.Batch(notifyCmd, m.generateBranchNameForPush(wt.Path, wt.Branch, m.baseBranch))
+				} else {
+					// No AI rename needed, go straight to push
+					notifyCmd := m.showInfoNotification("Pushing to remote...")
+					return m, tea.Batch(notifyCmd, m.pushBranch(wt.Path, wt.Branch))
+				}
+			}
+
 			// Normal commit (not before PR)
 			debugLog("Triggering worktree refresh after commit")
 			return m, tea.Batch(
@@ -476,6 +518,87 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Not in modal - auto-create PR with generated content (for auto-generation flow)
 		cmd = m.showInfoNotification("Creating draft PR...")
 		return m, tea.Batch(cmd, m.createPR(msg.worktreePath, msg.branch, msg.title, msg.description))
+
+	case pushBranchNameGeneratedMsg:
+		// AI branch name generated for push
+		if msg.err != nil {
+			// AI generation failed - fall back to current name (graceful degradation)
+			cmd = m.showWarningNotification("Using current branch name...")
+			return m, tea.Batch(cmd, m.pushBranch(msg.worktreePath, msg.oldBranchName))
+		}
+
+		// Check if target branch already exists locally
+		targetExists, _ := m.gitManager.BranchExists(msg.worktreePath, msg.newBranchName)
+		if targetExists {
+			// Target branch already exists - skip rename and use current name for push
+			cmd = m.showWarningNotification("Branch name already exists, using current name...")
+			return m, tea.Batch(cmd, m.pushBranch(msg.worktreePath, msg.oldBranchName))
+		}
+
+		// Store pending rename state (reuse PR state variables)
+		m.pendingPRNewName = msg.newBranchName
+		m.pendingPROldName = msg.oldBranchName
+		m.pendingPRWorktree = msg.worktreePath
+
+		// Check if remote branch exists
+		remoteExists, _ := m.gitManager.RemoteBranchExists(msg.worktreePath, msg.oldBranchName)
+
+		if remoteExists {
+			// Delete remote branch first
+			cmd = m.showInfoNotification("Deleting old remote branch...")
+			return m, tea.Batch(cmd, m.deleteRemoteBranchForPush(msg.worktreePath, msg.oldBranchName, msg.newBranchName))
+		} else {
+			// No remote, go straight to rename
+			cmd = m.showInfoNotification("Renaming to: " + msg.newBranchName)
+			return m, tea.Batch(cmd, m.renameBranchForPush(msg.oldBranchName, msg.newBranchName, msg.worktreePath))
+		}
+
+	case pushRemoteBranchDeletedMsg:
+		// Remote branch deleted, now rename local branch
+		if msg.err != nil {
+			// Deletion failed but continue anyway
+			cmd = m.showWarningNotification("Couldn't delete old remote, continuing...")
+		}
+
+		// Check if target branch already exists locally
+		targetExists, _ := m.gitManager.BranchExists(msg.worktreePath, msg.newBranchName)
+		if targetExists {
+			// Target branch already exists - skip rename and use current name for push
+			cmd = m.showWarningNotification("Branch name already exists, using current name...")
+			return m, tea.Batch(cmd, m.pushBranch(msg.worktreePath, msg.oldBranchName))
+		}
+
+		cmd = m.showInfoNotification("Renaming branch locally...")
+		return m, tea.Batch(cmd, m.renameBranchForPush(msg.oldBranchName, msg.newBranchName, msg.worktreePath))
+
+	case pushBranchRenamedMsg:
+		// Branch renamed, now push with new name
+		if msg.err != nil {
+			cmd = m.showErrorNotification("Failed to rename branch: " + msg.err.Error(), 4*time.Second)
+			return m, cmd
+		}
+
+		// Rename succeeded, now push
+		cmd = m.showInfoNotification("Pushing to remote...")
+		return m, tea.Batch(
+			cmd,
+			m.renameSessionsForBranch(msg.oldBranchName, msg.newBranchName),
+			m.pushBranch(msg.worktreePath, msg.newBranchName),
+		)
+
+	case pushCompletedMsg:
+		// Push completed
+		if msg.err != nil {
+			cmd = m.showErrorNotification("Failed to push: " + msg.err.Error(), 4*time.Second)
+			return m, cmd
+		}
+
+		// Push succeeded
+		cmd = m.showSuccessNotification("Pushed to origin/"+msg.branch, 3*time.Second)
+		return m, tea.Batch(
+			cmd,
+			m.loadWorktrees,
+		)
 
 	case themeChangedMsg:
 		if msg.err != nil {
@@ -881,8 +1004,8 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "p":
-		// Pull changes from base branch
+	case "u":
+		// Update from base branch (pull/merge base branch changes)
 		if wt := m.selectedWorktree(); wt != nil {
 			// Check if base branch is set
 			if m.baseBranch == "" {
@@ -901,6 +1024,64 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 			cmd = m.showInfoNotification("Pulling changes from base branch...")
 			return m, tea.Batch(cmd, m.pullFromBaseBranch(wt.Path, m.baseBranch))
+		}
+
+	case "p":
+		// Push branch to remote (with AI branch naming) - lowercase p
+		if wt := m.selectedWorktree(); wt != nil {
+			// First check if there are uncommitted changes
+			hasUncommitted, err := m.gitManager.HasUncommittedChanges(wt.Path)
+			if err != nil {
+				return m, m.showErrorNotification("Failed to check for uncommitted changes: "+err.Error(), 3*time.Second)
+			}
+
+			// Check AI configuration
+			hasAPIKey := m.configManager != nil && m.configManager.GetOpenRouterAPIKey() != ""
+			aiEnabled := m.configManager != nil && m.configManager.GetAIBranchNameEnabled()
+			aiContentEnabled := m.configManager != nil && m.configManager.GetAICommitEnabled()
+			hasAI := hasAPIKey && (aiEnabled || aiContentEnabled)
+
+			// If there are uncommitted changes, decide how to handle them
+			if hasUncommitted {
+				if hasAI && aiContentEnabled {
+					// AI is enabled for commit messages - generate commit message with AI first
+					cmd = m.showInfoNotification("🤖 Generating commit message...")
+					m.commitBeforePR = true // Reuse this flag to track commit-before-push
+					m.prCreationPending = "" // Empty means push-only (no PR)
+					return m, tea.Batch(cmd, m.generateCommitMessageWithAI(wt.Path))
+				} else if hasAI {
+					// AI is enabled for branch but not commit - auto-commit with simple message and proceed
+					cmd = m.showInfoNotification("Committing changes...")
+					m.commitBeforePR = true
+					m.prCreationPending = "" // Empty means push-only
+					return m, tea.Batch(cmd, m.autoCommitBeforePR(wt.Path, wt.Branch))
+				} else {
+					// No AI - show commit modal for user to write proper commit message
+					m.modal = commitModal
+					m.modalFocused = 0
+					m.commitSubjectInput.SetValue("")
+					m.commitSubjectInput.Focus()
+					m.commitBodyInput.SetValue("")
+					m.commitBeforePR = true
+					m.prCreationPending = "" // Empty means push-only
+					return m, nil
+				}
+			}
+
+			// No uncommitted changes - proceed to push
+			// Check if we should do AI renaming first
+			isRandomName := m.gitManager.IsRandomBranchName(wt.Branch)
+			shouldAIRename := hasAPIKey && aiEnabled && isRandomName
+
+			if shouldAIRename {
+				// Start AI rename flow before push
+				cmd = m.showInfoNotification("🤖 Generating semantic branch name...")
+				return m, tea.Batch(cmd, m.generateBranchNameForPush(wt.Path, wt.Branch, m.baseBranch))
+			} else {
+				// Normal push (no AI)
+				cmd = m.showInfoNotification("Pushing to remote...")
+				return m, tea.Batch(cmd, m.pushBranch(wt.Path, wt.Branch))
+			}
 		}
 
 	case "P":

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/coollabsio/gcool/config"
 )
 
 // Worktree represents a Git worktree
@@ -267,6 +269,50 @@ func (m *Manager) Create(path, branch string, newBranch bool, baseBranch string)
 	cmd := exec.Command("git", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to create worktree: %s", string(output))
+	}
+
+	// Execute setup script if configured (non-blocking - errors are returned but don't prevent worktree usage)
+	if err := m.executeSetupScript(workspacePath); err != nil {
+		return fmt.Errorf("setup script failed: %w", err)
+	}
+
+	return nil
+}
+
+// executeSetupScript runs the onWorktreeCreate script from gcool.json if configured
+// Returns error if script execution fails, nil if no script configured or script succeeds
+func (m *Manager) executeSetupScript(workspacePath string) error {
+	// Load script config from repository root
+	repoRoot, err := m.GetRepoRoot()
+	if err != nil {
+		return fmt.Errorf("failed to get repo root: %w", err)
+	}
+
+	scriptConfig, err := config.LoadScripts(repoRoot)
+	if err != nil {
+		return fmt.Errorf("failed to load gcool.json: %w", err)
+	}
+
+	// Get the onWorktreeCreate script
+	script := scriptConfig.GetScript("onWorktreeCreate")
+	if script == "" {
+		// No setup script configured, skip
+		return nil
+	}
+
+	// Set environment variables for the script
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Dir = workspacePath // Run script in the worktree directory
+	cmd.Env = append(os.Environ(),
+		fmt.Sprintf("GCOOL_WORKSPACE_PATH=%s", workspacePath),
+		fmt.Sprintf("GCOOL_ROOT_PATH=%s", repoRoot),
+	)
+
+	// Capture both stdout and stderr for error reporting
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Script failed - return error with output for user debugging
+		return fmt.Errorf("%s\n\nScript output:\n%s", err.Error(), string(output))
 	}
 
 	return nil

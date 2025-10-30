@@ -214,6 +214,29 @@ Configuration management:
 - Accessible via settings menu → Tmux Config
 - Supports install, update, and remove operations
 
+**Setup Script Integration** ✅:
+- Automatic script execution when creating new worktrees
+- Configure in `gcool.json` at repository root:
+```json
+{
+  "scripts": {
+    "onWorktreeCreate": "npm install && cp $GCOOL_ROOT_PATH/.env ."
+  }
+}
+```
+- Environment variables available in script:
+  - `GCOOL_WORKSPACE_PATH`: Path to the newly created worktree
+  - `GCOOL_ROOT_PATH`: Path to the repository root directory
+- Script runs every time a worktree is created (no marker file tracking)
+- Executes for ALL new worktrees (created with `n` or `a` keys)
+- Script failures show as warnings, not errors (worktree still usable)
+- Script output captured and displayed in notification on failure
+- Common use cases:
+  - Copy environment files from repo root
+  - Install dependencies (npm install, go mod download, etc.)
+  - Setup symlinks to shared resources
+  - Initialize local configuration files
+
 ## Dependencies
 
 Key external dependencies:
@@ -250,6 +273,23 @@ Key external dependencies:
 - Shows commit hash on success (first 8 characters)
 - Auto-refreshes worktree list after successful commit
 - Full git commit flow: stages all changes with `git add -A`, then commits with subject and body
+
+**Worktree Setup Scripts** ✅:
+- Automatic execution of setup scripts when creating new worktrees
+- Configured via `gcool.json` in repository root using `scripts.onWorktreeCreate` key
+- Provides `GCOOL_WORKSPACE_PATH` and `GCOOL_ROOT_PATH` environment variables to scripts
+- Runs every time a worktree is created (no marker file tracking)
+- Runs for all worktree creation methods (new branch with `n`, existing branch with `a`)
+- Script failures are non-blocking - displayed as warnings, not errors
+- Full script output captured and shown in notification for debugging
+- Scripts modal (`;` key) displays `onWorktreeCreate` as view-only (cannot be manually executed)
+- Implementation details:
+  - `config/scripts.go`: Loads `gcool.json` configuration
+  - `git/worktree.go`: `executeSetupScript()` method handles execution
+  - `tui/update.go`: Distinguishes setup script warnings from git errors
+  - `tui/model.go`: Filters `onWorktreeCreate` from runnable scripts list
+  - `tui/view.go`: Shows `onWorktreeCreate` in separate "Automatic Scripts (view-only)" section
+  - Error format: "setup script failed: [error details]" triggers warning display
 
 **Automatic Base Branch Update Detection** ⚠️ (NOT YET TESTED):
 - Periodic checks every 10 seconds (configurable) for base branch updates
