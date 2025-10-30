@@ -43,14 +43,18 @@ func (m Model) View() string {
 	// Combine panels horizontally
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanelStyled, rightPanelStyled)
 
+	// Add minimal help bar at the bottom
+	helpBar := m.renderMinimalHelpBar()
+	mainView := lipgloss.JoinVertical(lipgloss.Left, panels, helpBar)
+
 	// If notification exists, render it as an overlay on top of panels
 	if m.notification != nil {
 		notification := m.renderNotification()
 		// Position notification at the bottom center as an overlay
-		return m.renderNotificationOverlay(panels, notification)
+		return m.renderNotificationOverlay(mainView, notification)
 	}
 
-	return panels
+	return mainView
 }
 
 func (m Model) renderWorktreeList() string {
@@ -349,6 +353,23 @@ func (m Model) renderNotificationOverlay(baseView, notification string) string {
 	}
 
 	return strings.TrimRight(output.String(), "\n")
+}
+
+func (m Model) renderMinimalHelpBar() string {
+	var b strings.Builder
+
+	keybindings := []string{
+		"n new",
+		"enter switch",
+		"t terminal",
+		"r refresh",
+		"h help",
+	}
+
+	helpText := strings.Join(keybindings, " • ")
+	b.WriteString(helpStyle.Render(helpText))
+
+	return b.String()
 }
 
 func (m Model) renderModal() string {
