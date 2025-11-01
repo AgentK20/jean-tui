@@ -1042,8 +1042,8 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 		m.modal = createWithNameModal
 		m.sessionNameInput.SetValue(randomName)
-		m.sessionNameInput.Focus()
-		m.modalFocused = 0
+		m.sessionNameInput.Blur()
+		m.modalFocused = 1  // Set create button as default focus
 		return m, nil
 
 	case "b":
