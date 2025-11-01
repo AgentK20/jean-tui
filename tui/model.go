@@ -32,11 +32,13 @@ type scriptOutputBuffer struct {
 
 // SwitchInfo contains information about the worktree to switch to
 type SwitchInfo struct {
-	Path           string
-	Branch         string
-	AutoClaude     bool
-	TerminalOnly   bool   // If true, open terminal session instead of Claude session
-	ScriptCommand  string // If set, run this script command instead of shell/Claude
+	Path                 string
+	Branch               string
+	AutoClaude           bool
+	TargetWindow         string // Which window to attach to: "terminal" or "claude"
+	ScriptCommand        string // If set, run this script command instead of shell/Claude
+	SessionName          string // Custom name for Claude session (for --session flag)
+	IsClaudeInitialized  bool   // Whether this Claude session has been initialized before
 }
 
 // ScriptExecution represents a running or completed script
@@ -72,6 +74,7 @@ const (
 	prListModal
 	scriptsModal
 	scriptOutputModal
+	createWithNameModal
 )
 
 // NotificationType defines the type of notification
@@ -135,6 +138,7 @@ type Model struct {
 	nameInput              textinput.Model
 	pathInput              textinput.Model
 	searchInput            textinput.Model
+	sessionNameInput       textinput.Model // Session name input for new worktree
 	commitSubjectInput     textinput.Model // Subject line for commit message
 	commitBodyInput        textinput.Model // Body for commit message
 	prTitleInput           textinput.Model // PR title input
@@ -239,6 +243,11 @@ func NewModel(repoPath string, autoClaude bool) Model {
 	searchInput.CharLimit = 100
 	searchInput.Width = 50
 
+	sessionNameInput := textinput.New()
+	sessionNameInput.Placeholder = "Session name (e.g., my-feature)"
+	sessionNameInput.CharLimit = 100
+	sessionNameInput.Width = 50
+
 	commitSubjectInput := textinput.New()
 	commitSubjectInput.Placeholder = "Commit subject (required)"
 	commitSubjectInput.CharLimit = 72
@@ -309,6 +318,7 @@ func NewModel(repoPath string, autoClaude bool) Model {
 		nameInput:          nameInput,
 		pathInput:          pathInput,
 		searchInput:        searchInput,
+		sessionNameInput:   sessionNameInput,
 		commitSubjectInput: commitSubjectInput,
 		commitBodyInput:    commitBodyInput,
 		prTitleInput:       prTitleInput,
@@ -395,6 +405,13 @@ type (
 		err    error
 		path   string
 		branch string
+	}
+
+	worktreeCreatedWithSessionMsg struct {
+		err         error
+		path        string
+		branch      string
+		sessionName string
 	}
 
 	worktreeDeletedMsg struct {
@@ -616,6 +633,24 @@ func (m Model) createWorktree(path, branch string, newBranch bool) tea.Cmd {
 	}
 }
 
+func (m Model) createWorktreeWithSession(path, sessionName string, newBranch bool) tea.Cmd {
+	return func() tea.Msg {
+		// Ensure .workspaces directory exists
+		if err := m.gitManager.EnsureWorkspacesDir(); err != nil {
+			return worktreeCreatedWithSessionMsg{err: err, path: path, branch: sessionName, sessionName: sessionName}
+		}
+
+		// Use base branch when creating new branch
+		baseBranch := ""
+		if newBranch {
+			baseBranch = m.baseBranch
+		}
+
+		err := m.gitManager.Create(path, sessionName, newBranch, baseBranch)
+		return worktreeCreatedWithSessionMsg{err: err, path: path, branch: sessionName, sessionName: sessionName}
+	}
+}
+
 func (m Model) deleteWorktree(path, branch string, force bool) tea.Cmd {
 	return func() tea.Msg {
 		// First remove the worktree
@@ -624,14 +659,15 @@ func (m Model) deleteWorktree(path, branch string, force bool) tea.Cmd {
 			return worktreeDeletedMsg{err: err}
 		}
 
-		// Then kill the associated tmux sessions if they exist
-		// Kill Claude session
+		// Clean up branch-specific config data (PRs, Claude initialization, etc.)
+		// This prevents config file bloat and removes stale references
+		if m.configManager != nil {
+			_ = m.configManager.CleanupBranch(m.repoPath, branch) // Ignore error, not critical
+		}
+
+		// Then kill the associated tmux session if it exists
 		sessionName := m.sessionManager.SanitizeName(branch)
 		_ = m.sessionManager.Kill(sessionName) // Ignore error if session doesn't exist
-
-		// Kill terminal-only session (if it exists)
-		terminalSessionName := m.sessionManager.SanitizeNameTerminal(branch)
-		_ = m.sessionManager.Kill(terminalSessionName) // Ignore error if session doesn't exist
 
 		return worktreeDeletedMsg{err: nil}
 	}
@@ -656,16 +692,9 @@ func (m Model) renameSessionsForBranch(oldBranch, newBranch string) tea.Cmd {
 		// Sanitize both branch names for session names
 		oldSessionName := m.sessionManager.SanitizeName(oldBranch)
 		newSessionName := m.sessionManager.SanitizeName(newBranch)
-		oldTerminalSessionName := m.sessionManager.SanitizeNameTerminal(oldBranch)
-		newTerminalSessionName := m.sessionManager.SanitizeNameTerminal(newBranch)
 
-		// Rename Claude session
+		// Rename session
 		if err := m.sessionManager.RenameSession(oldSessionName, newSessionName); err != nil {
-			// Log error but continue (session might not exist)
-		}
-
-		// Rename terminal session
-		if err := m.sessionManager.RenameSession(oldTerminalSessionName, newTerminalSessionName); err != nil {
 			// Log error but continue (session might not exist)
 		}
 
@@ -1254,6 +1283,11 @@ func (m Model) filterBranches(query string) []string {
 // GetSwitchInfo returns the switch information (for shell integration)
 func (m Model) GetSwitchInfo() SwitchInfo {
 	return m.switchInfo
+}
+
+// GetConfigManager returns the config manager for access from main.go
+func (m Model) GetConfigManager() *config.Manager {
+	return m.configManager
 }
 
 // loadSessions loads tmux sessions for the current repository only

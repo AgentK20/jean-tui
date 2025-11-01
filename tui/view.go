@@ -374,6 +374,8 @@ func (m Model) renderModal() string {
 	switch m.modal {
 	case createModal:
 		return m.renderCreateModal()
+	case createWithNameModal:
+		return m.renderCreateWithNameModal()
 	case deleteModal:
 		return m.renderDeleteModal()
 	case branchSelectModal:
@@ -460,6 +462,74 @@ func (m Model) renderCreateModal() string {
 
 	b.WriteString("\n\n")
 	b.WriteString(helpStyle.Render("Enter to confirm • Esc to cancel"))
+
+	return lipgloss.Place(
+		m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		modalStyle.Render(b.String()),
+	)
+}
+
+func (m Model) renderCreateWithNameModal() string {
+	var b strings.Builder
+
+	b.WriteString(modalTitleStyle.Render("Create New Worktree"))
+	b.WriteString("\n\n")
+
+	// Session name input (pre-filled with random name)
+	b.WriteString(inputLabelStyle.Render("Session Name:"))
+	b.WriteString("\n")
+
+	// Show focused or unfocused input
+	if m.modalFocused == 0 {
+		b.WriteString(m.sessionNameInput.View())
+	} else {
+		// When not focused, show the input value as plain text
+		inputValue := m.sessionNameInput.Value()
+		if inputValue == "" {
+			inputValue = m.sessionNameInput.Placeholder
+		}
+		b.WriteString(detailValueStyle.Render(inputValue))
+	}
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("(customize the name or use the default)"))
+	b.WriteString("\n\n")
+
+	// Show info about what will be created
+	sessionName := m.sessionNameInput.Value()
+	sanitizedName := m.sessionManager.SanitizeBranchName(sessionName)
+
+	b.WriteString(helpStyle.Render(fmt.Sprintf("Will create:")))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render(fmt.Sprintf("  Branch: %s", sanitizedName)))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render(fmt.Sprintf("  Claude will automatically continue previous conversations")))
+
+	// Show sanitization notice if name was changed
+	if sanitizedName != sessionName && sessionName != "" {
+		b.WriteString("\n")
+		b.WriteString(helpStyle.Render(fmt.Sprintf("  (sanitized from '%s')", sessionName)))
+	}
+	b.WriteString("\n\n")
+
+	// Buttons (Create and Cancel)
+	createBtn := "Create"
+	cancelBtn := "Cancel"
+
+	if m.modalFocused == 1 {
+		b.WriteString(selectedButtonStyle.Render(createBtn))
+	} else {
+		b.WriteString(buttonStyle.Render(createBtn))
+	}
+
+	if m.modalFocused == 2 {
+		b.WriteString(selectedCancelButtonStyle.Render(cancelBtn))
+	} else {
+		b.WriteString(cancelButtonStyle.Render(cancelBtn))
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("Tab to navigate • Enter to confirm • Esc to cancel"))
 
 	return lipgloss.Place(
 		m.width, m.height,
@@ -1281,41 +1351,48 @@ func (m Model) renderSettingsModal() string {
 	b.WriteString(helpStyle.Render("Configure gcool settings for this repository"))
 	b.WriteString("\n\n")
 
-	// Define settings options
+	// Define settings options (without computing current values yet)
 	settings := []struct {
 		name        string
 		key         string
 		description string
-		current     string
+		getCurrent  func() string // Function to get current value dynamically
 	}{
 		{
 			name:        "Editor",
 			key:         "e",
 			description: "Default editor for opening worktrees",
-			current: func() string {
+			getCurrent: func() string {
 				if m.configManager != nil {
 					return m.configManager.GetEditor(m.repoPath)
 				}
 				return "code"
-			}(),
+			},
 		},
 		{
 			name:        "Theme",
 			key:         "h",
 			description: "Change UI theme (matrix, coolify, dracula, nord, solarized)",
-			current:     m.configManager.GetTheme(m.repoPath),
+			getCurrent: func() string {
+				if m.configManager != nil {
+					return m.configManager.GetTheme(m.repoPath)
+				}
+				return "matrix"
+			},
 		},
 		{
 			name:        "Base Branch",
 			key:         "c",
 			description: "Base branch for creating new worktrees",
-			current:     m.baseBranch,
+			getCurrent: func() string {
+				return m.baseBranch
+			},
 		},
 		{
 			name:        "Tmux Config",
 			key:         "t",
 			description: "Add/remove gcool tmux config to ~/.tmux.conf",
-			current: func() string {
+			getCurrent: func() string {
 				if m.sessionManager != nil {
 					hasConfig, err := m.sessionManager.HasGcoolTmuxConfig()
 					if err == nil && hasConfig {
@@ -1323,18 +1400,31 @@ func (m Model) renderSettingsModal() string {
 					}
 				}
 				return "Not installed"
-			}(),
+			},
 		},
 		{
 			name:        "AI Integration",
 			key:         "a",
 			description: "Configure OpenRouter API for AI-powered commit messages and branch names",
-			current: func() string {
+			getCurrent: func() string {
 				if m.configManager != nil && m.configManager.GetOpenRouterAPIKey() != "" {
 					return "Configured"
 				}
 				return "Not configured"
-			}(),
+			},
+		},
+		{
+			name:        "Debug Logs",
+			key:         "d",
+			description: "Enable/disable debug logging to /tmp/gcool-*.log files",
+			getCurrent: func() string {
+				if m.configManager != nil {
+					if m.configManager.GetDebugLoggingEnabled() {
+						return "Enabled"
+					}
+				}
+				return "Disabled"
+			},
 		},
 	}
 
@@ -1353,7 +1443,7 @@ func (m Model) renderSettingsModal() string {
 		if i == m.settingsIndex {
 			b.WriteString(helpStyle.Render(fmt.Sprintf("    %s", setting.description)))
 			b.WriteString("\n")
-			b.WriteString(helpStyle.Render(fmt.Sprintf("    Current: %s", setting.current)))
+			b.WriteString(helpStyle.Render(fmt.Sprintf("    Current: %s", setting.getCurrent())))
 			b.WriteString("\n")
 		}
 	}

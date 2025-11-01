@@ -19,8 +19,14 @@ import (
 
 const version = "0.1.0"
 
-// debugLog writes a message to the debug log file
+// Global flag for debug logging (set after config is loaded)
+var debugLoggingEnabled bool = false
+
+// debugLog writes a message to the debug log file if logging is enabled
 func debugLog(msg string) {
+	if !debugLoggingEnabled {
+		return
+	}
 	if f, err := os.OpenFile("/tmp/gcool-debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		fmt.Fprintf(f, "%s\n", msg)
 		f.Close()
@@ -111,6 +117,12 @@ func main() {
 
 	// Create and run TUI
 	model := tui.NewModel(repoPath, autoClaude)
+
+	// Enable debug logging if configured
+	if model.GetConfigManager() != nil {
+		debugLoggingEnabled = model.GetConfigManager().GetDebugLoggingEnabled()
+	}
+
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	finalModel, err := p.Run()
@@ -123,20 +135,25 @@ func main() {
 	if m, ok := finalModel.(tui.Model); ok {
 		switchInfo := m.GetSwitchInfo()
 		if switchInfo.Path != "" {
-			// Format: path|branch|auto-claude|terminal-only|script-command
+			// Format: path|branch|auto-claude|target-window|script-command|session-name|is-claude-initialized
 			autoCl := "false"
 			if switchInfo.AutoClaude {
 				autoCl = "true"
 			}
-			termOnly := "false"
-			if switchInfo.TerminalOnly {
-				termOnly = "true"
+			targetWindow := switchInfo.TargetWindow
+			if targetWindow == "" {
+				targetWindow = "terminal" // Default to terminal window if not set
 			}
-			switchData := fmt.Sprintf("%s|%s|%s|%s|%s", switchInfo.Path, switchInfo.Branch, autoCl, termOnly, switchInfo.ScriptCommand)
+			isInitialized := "false"
+			if switchInfo.IsClaudeInitialized {
+				isInitialized = "true"
+			}
+			switchData := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s", switchInfo.Path, switchInfo.Branch, autoCl, targetWindow, switchInfo.ScriptCommand, switchInfo.SessionName, isInitialized)
 
 			// Debug: log what we're writing
-			debugLog(fmt.Sprintf("DEBUG main: switchInfo={Path:%q Branch:%q AutoClaude:%v TerminalOnly:%v}", switchInfo.Path, switchInfo.Branch, switchInfo.AutoClaude, switchInfo.TerminalOnly))
-			debugLog(fmt.Sprintf("DEBUG main: switchData=%q", switchData))
+			debugLog(fmt.Sprintf("DEBUG main: switchInfo={Path:%q Branch:%q AutoClaude:%v TargetWindow:%q SessionName:%q}", switchInfo.Path, switchInfo.Branch, switchInfo.AutoClaude, switchInfo.TargetWindow, switchInfo.SessionName))
+			debugLog(fmt.Sprintf("DEBUG main: switchData=%q (has %d fields)", switchData, strings.Count(switchData, "|")+1))
+			fmt.Fprintf(os.Stderr, "DEBUG main: SessionName=%q\n", switchInfo.SessionName)
 
 			// Check if we should write to a file (for shell wrapper integration)
 			if switchFile := os.Getenv("GCOOL_SWITCH_FILE"); switchFile != "" {

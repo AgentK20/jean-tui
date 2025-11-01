@@ -16,6 +16,7 @@ type Config struct {
 	OpenRouterModel     string                 `json:"openrouter_model,omitempty"` // OpenRouter model, "" = default haiku
 	AICommitEnabled     bool                   `json:"ai_commit_enabled,omitempty"` // Enable AI commit message generation
 	AIBranchNameEnabled bool                   `json:"ai_branch_name_enabled,omitempty"` // Enable AI branch name generation
+	DebugLoggingEnabled bool                   `json:"debug_logging_enabled"` // Enable debug logging to temp files
 }
 
 // PRInfo represents information about a pull request
@@ -34,6 +35,7 @@ type RepoConfig struct {
 	AutoFetchInterval  int               `json:"auto_fetch_interval,omitempty"` // in seconds, 0 = use default (10s)
 	Theme              string            `json:"theme,omitempty"`               // Per-repo theme override, "" = use global default
 	PRs                map[string][]PRInfo `json:"prs,omitempty"`                 // branch -> list of PRs
+	InitializedClaudes map[string]bool   `json:"initialized_claudes,omitempty"` // branch -> whether Claude has been started
 }
 
 // Manager handles configuration loading and saving
@@ -304,6 +306,17 @@ func (m *Manager) SetAIBranchNameEnabled(enabled bool) error {
 	return m.save()
 }
 
+// GetDebugLoggingEnabled returns whether debug logging is enabled
+func (m *Manager) GetDebugLoggingEnabled() bool {
+	return m.config.DebugLoggingEnabled
+}
+
+// SetDebugLoggingEnabled sets whether debug logging is enabled
+func (m *Manager) SetDebugLoggingEnabled(enabled bool) error {
+	m.config.DebugLoggingEnabled = enabled
+	return m.save()
+}
+
 // GetPRs returns all pull requests for a given branch
 func (m *Manager) GetPRs(repoPath, branch string) []PRInfo {
 	if repo, ok := m.config.Repositories[repoPath]; ok {
@@ -388,4 +401,72 @@ func (m *Manager) RemovePR(repoPath, branch, url string) error {
 func (m *Manager) HasPRs(repoPath, branch string) bool {
 	prs := m.GetPRs(repoPath, branch)
 	return len(prs) > 0
+}
+
+// IsClaudeInitialized checks if a Claude session has been initialized for a branch
+func (m *Manager) IsClaudeInitialized(repoPath, branch string) bool {
+	if repo, ok := m.config.Repositories[repoPath]; ok {
+		if repo.InitializedClaudes != nil {
+			return repo.InitializedClaudes[branch]
+		}
+	}
+	return false
+}
+
+// SetClaudeInitialized marks a branch as having an initialized Claude session
+func (m *Manager) SetClaudeInitialized(repoPath, branch string) error {
+	if m.config.Repositories == nil {
+		m.config.Repositories = make(map[string]*RepoConfig)
+	}
+
+	if _, ok := m.config.Repositories[repoPath]; !ok {
+		m.config.Repositories[repoPath] = &RepoConfig{}
+	}
+
+	repo := m.config.Repositories[repoPath]
+	if repo.InitializedClaudes == nil {
+		repo.InitializedClaudes = make(map[string]bool)
+	}
+
+	repo.InitializedClaudes[branch] = true
+	// Only log debug info if debug logging is enabled
+	if os.Getenv("GCOOL_DEBUG_ENABLED") == "true" {
+		fmt.Fprintf(os.Stderr, "DEBUG config: SetClaudeInitialized called for repo=%q branch=%q\n", repoPath, branch)
+	}
+	err := m.save()
+	if err != nil && os.Getenv("GCOOL_DEBUG_ENABLED") == "true" {
+		fmt.Fprintf(os.Stderr, "DEBUG config: SetClaudeInitialized FAILED: %v\n", err)
+	} else if err == nil && os.Getenv("GCOOL_DEBUG_ENABLED") == "true" {
+		fmt.Fprintf(os.Stderr, "DEBUG config: SetClaudeInitialized SUCCESS\n")
+	}
+	return err
+}
+
+// CleanupBranch removes all branch-specific data from config when a worktree is deleted
+// This includes:
+// - All pull requests for the branch
+// - Claude initialization flag
+// - Last selected branch reference (if it matches the deleted branch)
+func (m *Manager) CleanupBranch(repoPath, branch string) error {
+	repo, ok := m.config.Repositories[repoPath]
+	if !ok {
+		return nil // Nothing to clean up
+	}
+
+	// Remove all PRs for this branch
+	if repo.PRs != nil {
+		delete(repo.PRs, branch)
+	}
+
+	// Remove Claude initialization flag for this branch
+	if repo.InitializedClaudes != nil {
+		delete(repo.InitializedClaudes, branch)
+	}
+
+	// Clear last selected branch if it matches the deleted branch
+	if repo.LastSelectedBranch == branch {
+		repo.LastSelectedBranch = ""
+	}
+
+	return m.save()
 }
