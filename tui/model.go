@@ -1,10 +1,11 @@
 package tui
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -16,6 +17,18 @@ import (
 	"github.com/coollabsio/gcool/session"
 )
 
+// Package-level shared state for streaming script output
+var (
+	scriptOutputBuffers = make(map[int]*scriptOutputBuffer)
+	scriptBuffersMutex  sync.RWMutex
+)
+
+type scriptOutputBuffer struct {
+	buffer   strings.Builder
+	mutex    sync.Mutex
+	finished bool
+	cmd      *exec.Cmd
+}
 
 // SwitchInfo contains information about the worktree to switch to
 type SwitchInfo struct {
@@ -521,6 +534,16 @@ type (
 	scriptOutputMsg struct {
 		scriptName string
 		output     string
+	}
+
+	scriptOutputStreamMsg struct {
+		scriptName string
+		output     string // Incremental output chunk
+		finished   bool   // True when script completes
+	}
+
+	scriptOutputPollMsg struct {
+		scriptIdx int // Index of script to poll
 	}
 
 	// Push-only messages (without PR creation)
@@ -1375,30 +1398,95 @@ func (m *Model) showInfoNotification(message string) tea.Cmd {
 	return m.showNotification(message, NotificationInfo, &duration)
 }
 
-// runScript executes a script and captures its output
+// runScript executes a script and captures its output with real-time streaming
 // Uses cmd.Start() so the process can be killed later
+// Returns immediately and starts polling for output updates
 func (m *Model) runScript(scriptName, scriptCmd, worktreePath string, scriptIdx int) tea.Cmd {
 	return func() tea.Msg {
 		cmd := exec.Command("bash", "-c", scriptCmd)
 		cmd.Dir = worktreePath
 
-		var out bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &out
-
-		// Use Start() instead of Run() so process can be killed
-		if err := cmd.Start(); err == nil {
-			// Store PID in the script execution so we can kill it later
-			if scriptIdx < len(m.runningScripts) {
-				m.runningScripts[scriptIdx].pid = cmd.Process.Pid
-			}
-
-			// Wait for process to complete
-			_ = cmd.Wait()
+		// Create pipes for streaming stdout and stderr
+		stdoutPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			return scriptOutputStreamMsg{scriptName: scriptName, output: fmt.Sprintf("Failed to create stdout pipe: %v\n", err), finished: true}
+		}
+		stderrPipe, err := cmd.StderrPipe()
+		if err != nil {
+			return scriptOutputStreamMsg{scriptName: scriptName, output: fmt.Sprintf("Failed to create stderr pipe: %v\n", err), finished: true}
 		}
 
-		return scriptOutputMsg{scriptName: scriptName, output: out.String()}
+		// Start the process
+		if err := cmd.Start(); err != nil {
+			return scriptOutputStreamMsg{scriptName: scriptName, output: fmt.Sprintf("Failed to start script: %v\n", err), finished: true}
+		}
+
+		// Store PID in the script execution so we can kill it later
+		if scriptIdx < len(m.runningScripts) {
+			m.runningScripts[scriptIdx].pid = cmd.Process.Pid
+		}
+
+		// Create shared buffer for this script
+		scriptBuffersMutex.Lock()
+		scriptOutputBuffers[scriptIdx] = &scriptOutputBuffer{
+			cmd:      cmd,
+			finished: false,
+		}
+		scriptBuffersMutex.Unlock()
+
+		// Goroutine to read from stdout
+		go func() {
+			scanner := bufio.NewScanner(stdoutPipe)
+			for scanner.Scan() {
+				scriptBuffersMutex.RLock()
+				buf := scriptOutputBuffers[scriptIdx]
+				scriptBuffersMutex.RUnlock()
+				if buf != nil {
+					buf.mutex.Lock()
+					buf.buffer.WriteString(scanner.Text() + "\n")
+					buf.mutex.Unlock()
+				}
+			}
+		}()
+
+		// Goroutine to read from stderr
+		go func() {
+			scanner := bufio.NewScanner(stderrPipe)
+			for scanner.Scan() {
+				scriptBuffersMutex.RLock()
+				buf := scriptOutputBuffers[scriptIdx]
+				scriptBuffersMutex.RUnlock()
+				if buf != nil {
+					buf.mutex.Lock()
+					buf.buffer.WriteString(scanner.Text() + "\n")
+					buf.mutex.Unlock()
+				}
+			}
+		}()
+
+		// Goroutine to wait for process completion
+		go func() {
+			_ = cmd.Wait()
+			scriptBuffersMutex.RLock()
+			buf := scriptOutputBuffers[scriptIdx]
+			scriptBuffersMutex.RUnlock()
+			if buf != nil {
+				buf.mutex.Lock()
+				buf.finished = true
+				buf.mutex.Unlock()
+			}
+		}()
+
+		// Start polling for output updates
+		return scriptOutputPollMsg{scriptIdx: scriptIdx}
 	}
+}
+
+// pollScriptOutput polls for script output updates every 200ms
+func (m *Model) pollScriptOutput(scriptIdx int) tea.Cmd {
+	return tea.Tick(200*time.Millisecond, func(t time.Time) tea.Msg {
+		return scriptOutputPollMsg{scriptIdx: scriptIdx}
+	})
 }
 
 // scheduleNotificationHide schedules the notification to be hidden after specified duration

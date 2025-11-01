@@ -729,6 +729,57 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case scriptOutputStreamMsg:
+		// Update script with incremental output
+		for i := range m.runningScripts {
+			if m.runningScripts[i].name == msg.scriptName {
+				// Append new output (don't replace)
+				m.runningScripts[i].output += msg.output
+				if msg.finished {
+					m.runningScripts[i].finished = true
+					// Clean up the shared buffer
+					scriptBuffersMutex.Lock()
+					delete(scriptOutputBuffers, i)
+					scriptBuffersMutex.Unlock()
+				}
+				break
+			}
+		}
+		return m, nil
+
+	case scriptOutputPollMsg:
+		// Check if buffer exists for this script
+		scriptBuffersMutex.RLock()
+		buf := scriptOutputBuffers[msg.scriptIdx]
+		scriptBuffersMutex.RUnlock()
+
+		if buf == nil {
+			// Buffer doesn't exist, script might be done or not started
+			return m, nil
+		}
+
+		// Get current output from buffer
+		buf.mutex.Lock()
+		currentOutput := buf.buffer.String()
+		isFinished := buf.finished
+		buf.mutex.Unlock()
+
+		// Update the script's output
+		if msg.scriptIdx < len(m.runningScripts) {
+			m.runningScripts[msg.scriptIdx].output = currentOutput
+			if isFinished {
+				m.runningScripts[msg.scriptIdx].finished = true
+				// Clean up the shared buffer
+				scriptBuffersMutex.Lock()
+				delete(scriptOutputBuffers, msg.scriptIdx)
+				scriptBuffersMutex.Unlock()
+				return m, nil // Stop polling when finished
+			}
+		}
+
+		// Continue polling if not finished
+		return m, m.pollScriptOutput(msg.scriptIdx)
+
 	case activityTickMsg:
 		// Check if enough time has passed since last activity check
 		if time.Since(m.lastActivityCheck) >= m.activityCheckInterval {
