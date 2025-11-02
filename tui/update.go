@@ -1105,7 +1105,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Check if we should generate AI PR content
 				if hasAPIKey && aiEnabled {
 					// Generate AI PR content before creating PR
-					cmd := m.showInfoNotification("📝 Generating PR title and description...")
+					cmd := m.showInfoNotification("🤖 Generating PR title and description...")
 					return m, tea.Batch(
 						cmd,
 						m.generatePRContent(wt.Path, wt.Branch, m.baseBranch),
