@@ -1139,10 +1139,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.prSpinnerFrame = (m.prSpinnerFrame + 1) % 10
 			return m, m.animateSpinner()
 		}
-		// Also handle Claude status animation frame
-		m.claudeStatusFrame = (m.claudeStatusFrame + 1) % 10
-		// Continue animation tick
-		return m, m.scheduleClaudeStatusAnimationTick()
+		// No more spinners, return no command
+		return m, nil
 
 	case renameGeneratedMsg:
 		// Stop spinner and handle rename generation result
@@ -1181,22 +1179,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pendingSwitchInfo = nil
 			return m, tea.Quit
 		}
-
-	case claudeStatusTickMsg:
-		// Poll Claude status for all active sessions
-		cmd = m.pollClaudeStatuses()
-		return m, cmd
-
-	case claudeStatusesUpdatedMsg:
-		if msg.err == nil {
-			// Update sessions, statuses, and detectors from the poll
-			m.sessions = msg.sessions
-			m.claudeStatuses = msg.statuses
-			m.statusDetectors = msg.statusDetectors
-		}
-		// Schedule next check
-		cmd = m.scheduleClaudeStatusCheck()
-		return m, cmd
 
 	case prMarkedReadyMsg:
 		// PR has been marked as ready for review

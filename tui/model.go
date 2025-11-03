@@ -247,13 +247,8 @@ type Model struct {
 	prRetryInProgress   bool   // Whether we're already in a retry attempt (prevent infinite loops)
 
 	// Worktree switch state (for ensuring worktree exists before switching)
-	pendingSwitchInfo   *SwitchInfo // Info for pending switch (will be completed after ensure succeeds)
-	ensuringWorktree    bool        // Whether we're currently ensuring a worktree exists
-
-	// Claude status detection
-	claudeStatuses    map[string]session.ClaudeStatus   // Status per session name
-	claudeStatusFrame int                               // Current animation frame for spinner
-	statusDetectors   map[string]*session.StatusDetector // Status detectors per session
+	pendingSwitchInfo *SwitchInfo // Info for pending switch (will be completed after ensure succeeds)
+	ensuringWorktree  bool        // Whether we're currently ensuring a worktree exists
 
 	// Initialization state
 	isInitializing bool // Suppress notifications during app startup (before first successful worktree load)
@@ -392,9 +387,7 @@ func NewModel(repoPath string, autoClaude bool) Model {
 		repoPath:           absoluteRepoPath,
 		editors:            editors,
 		availableThemes:    GetAvailableThemes(),
-		claudeStatuses:   make(map[string]session.ClaudeStatus),
-		statusDetectors:  make(map[string]*session.StatusDetector),
-		isInitializing:   true,
+		isInitializing: true,
 	}
 
 	// Load AI settings from config
@@ -452,9 +445,6 @@ func (m Model) Init() tea.Cmd {
 		m.loadBaseBranch(),
 		m.loadSessions(),
 		m.scheduleActivityCheck(),
-		m.pollClaudeStatuses(),           // Immediate first poll
-		m.scheduleClaudeStatusCheck(),    // Schedule periodic polls
-		m.scheduleClaudeStatusAnimationTick(),
 		tea.EnterAltScreen,
 	)
 }
@@ -681,19 +671,6 @@ type (
 		err error
 	}
 
-	claudeStatusUpdatedMsg struct {
-		sessionName string
-		status      session.ClaudeStatus
-	}
-
-	claudeStatusTickMsg time.Time
-
-	claudeStatusesUpdatedMsg struct {
-		sessions        []session.Session
-		statuses        map[string]session.ClaudeStatus
-		statusDetectors map[string]*session.StatusDetector
-		err             error
-	}
 )
 
 // Commands
@@ -1885,63 +1862,6 @@ func (m Model) scheduleNotificationHide(id int64, duration time.Duration) tea.Cm
 			return notificationHideMsg{id: id}
 		}),
 	)
-}
-
-// scheduleClaudeStatusCheck schedules a periodic check of Claude status in active sessions
-func (m Model) scheduleClaudeStatusCheck() tea.Cmd {
-	return tea.Tick(1500*time.Millisecond, func(t time.Time) tea.Msg {
-		return claudeStatusTickMsg(t)
-	})
-}
-
-// scheduleClaudeStatusAnimationTick schedules animation frame updates for busy indicators
-func (m Model) scheduleClaudeStatusAnimationTick() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
-		return spinnerTickMsg{}
-	})
-}
-
-// pollClaudeStatuses checks the status of all active Claude sessions
-func (m Model) pollClaudeStatuses() tea.Cmd {
-	// Capture the current detectors map to use in the command
-	detectors := m.statusDetectors
-
-	return func() tea.Msg {
-		// First, get fresh list of active sessions
-		sessions, err := m.sessionManager.List(m.repoPath)
-		if err != nil {
-			return claudeStatusesUpdatedMsg{
-				sessions:        []session.Session{},
-				statuses:        make(map[string]session.ClaudeStatus),
-				statusDetectors: detectors,
-				err:             err,
-			}
-		}
-
-		// Create status map to return
-		statuses := make(map[string]session.ClaudeStatus)
-
-		// Check each active session
-		for _, sess := range sessions {
-			// Get or create detector for this session
-			detector, exists := detectors[sess.Name]
-			if !exists {
-				detector = session.NewStatusDetector(sess.Name)
-				detectors[sess.Name] = detector
-			}
-
-			// Get current status from detector
-			status := detector.GetStatus()
-			statuses[sess.Name] = status
-		}
-
-		return claudeStatusesUpdatedMsg{
-			sessions:        sessions,
-			statuses:        statuses,
-			statusDetectors: detectors,
-			err:             nil,
-		}
-	}
 }
 
 // gitRepoOpenedMsg is sent when the git repository is opened in browser

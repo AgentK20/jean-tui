@@ -44,7 +44,6 @@ A powerful, feature-rich terminal user interface for managing Git worktrees with
 - **5 Built-in Themes**: Matrix, Coolify, Dracula, Nord, Solarized - choose your aesthetic
 - **Dynamic Theme Switching**: Change themes without restarting the app
 - **Intuitive Split-Panel UI**: Worktree list on left, detailed information and status on right
-- **Real-time Claude Status**: See when Claude is thinking/ready with animated spinners and indicators
 - **Comprehensive Help Modal**: Press `h` to see all keybindings and features
 - **Keyboard-First Design**: Vim-style navigation (hjkl, arrow keys) - no mouse required
 - **Beautiful Terminal Styling**: Modern UI with Lipgloss and Charm styling

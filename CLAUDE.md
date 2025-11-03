@@ -53,7 +53,6 @@ The application follows a clean separation of concerns:
   - `worktree.go`: All git worktree CRUD operations, branch management, and random name generation
 - **session/**: Tmux session management
   - `tmux.go`: Session creation, attachment, listing, and lifecycle management
-  - `claude_status.go`: Real-time Claude status detection (busy/ready states)
 - **config/**: User configuration persistence
   - `config.go`: Manages base branch settings per repository in `~/.config/gcool/config.json`
   - `scripts.go`: Loads and manages custom scripts from `gcool.json`
@@ -422,34 +421,6 @@ Key external dependencies:
 - Save theme per repository in config
 - Dynamic theme switching without restart (lines 959-973 in model.go)
 - Theme applied on startup from config (lines 406-411 in model.go)
-
-### Claude Status Detection ✅
-**Files**: `session/claude_status.go`, `tui/model.go`, `tui/view.go`
-
-**Features**:
-1. **Real-time Status Monitoring** (model.go:1690-1722)
-   - Polls tmux session every 1.5 seconds
-   - Detects busy/ready states by analyzing pane content
-   - Uses StatusDetector per session (model.go:239-241)
-   - Non-blocking polling doesn't interfere with user input
-
-2. **Visual Status Indicators** (view.go:135-147)
-   - Animated spinner for busy state (10-frame: ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
-   - Green dot (●) for ready state
-   - Shown in worktree list and details panel
-   - Color-coded status display
-
-3. **Status Detection Algorithm** (session/claude_status.go:45-64)
-   - Captures last 5 lines of tmux pane
-   - Checks for busy indicators:
-     - "Thinking"
-     - "Building context"
-     - "Executing tool"
-     - "Running"
-     - "Processing"
-   - Detects output stability for ready state (2s threshold)
-   - Smooth transitions between states
-
 ### Debug Logging ✅
 **Files**: `tui/update.go`, `config/config.go`
 

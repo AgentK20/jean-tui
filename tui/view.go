@@ -8,7 +8,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/coollabsio/gcool/config"
-	"github.com/coollabsio/gcool/session"
 )
 
 // View renders the TUI
@@ -131,20 +130,6 @@ func (m Model) renderWorktreeList() string {
 			}
 		}
 
-		// Show Claude status indicator
-		if status, exists := m.claudeStatuses[wt.ClaudeSessionName]; exists {
-			var statusIndicator string
-			if status == session.StatusBusy {
-				// Animated spinner for busy state
-				spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-				frame := m.claudeStatusFrame % len(spinners)
-				statusIndicator = normalItemStyle.Copy().Foreground(busyColor).Render(" " + spinners[frame])
-			} else if status == session.StatusReady {
-				// Green dot for ready state
-				statusIndicator = normalItemStyle.Copy().Foreground(readyColor).Render(" ●")
-			}
-			line += statusIndicator
-		}
 
 		b.WriteString(style.Render(line))
 		b.WriteString("\n")
@@ -225,22 +210,6 @@ func (m Model) renderDetails() string {
 		b.WriteString("\n")
 	}
 
-	// Show Claude status
-	if status, exists := m.claudeStatuses[wt.ClaudeSessionName]; exists {
-		b.WriteString("\n")
-		b.WriteString(detailKeyStyle.Render("Claude Status:"))
-		b.WriteString("\n")
-		if status == session.StatusBusy {
-			spinners := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-			frame := m.claudeStatusFrame % len(spinners)
-			statusText := normalItemStyle.Copy().Foreground(busyColor).Render(fmt.Sprintf("  %s Busy", spinners[frame]))
-			b.WriteString(statusText)
-		} else if status == session.StatusReady {
-			statusText := normalItemStyle.Copy().Foreground(readyColor).Render("  ● Ready")
-			b.WriteString(statusText)
-		}
-		b.WriteString("\n")
-	}
 
 	// Show PR status
 	if prs, ok := wt.PRs.([]config.PRInfo); ok && len(prs) > 0 {
