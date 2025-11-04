@@ -663,12 +663,15 @@ gcool provides an opinionated tmux configuration that can be optionally installe
 4. The config will be appended to your `~/.tmux.conf` in a clearly marked section
 
 **Features included:**
-- **Mouse scrolling enabled** - Scroll with your mouse wheel like a normal terminal
-- **10,000 line scrollback buffer** - More history to scroll through
-- **256 color support** - Better colors and styling
-- **Ctrl-D to detach** - Quick detach with `Ctrl+D` instead of `Ctrl+B D`
-- **Better status bar** - Minimal design with gcool branding
-- **Nice pane border colors** - Visual improvements
+- **Mouse support** - Scroll with your mouse wheel, click to select panes, and interact with clickable terminal links (URLs and filesystem paths)
+- **Enhanced scrollback** - 10,000 line scrollback buffer for reviewing long command outputs and logs
+- **True color support** - Full 256 color support with true color (24-bit) terminal overrides for beautiful styling
+- **Window navigation** - Use `Shift+Left` and `Shift+Right` arrows to switch between tmux windows quickly
+- **Quick detach** - Press `Ctrl+D` to detach from session instead of the default `Ctrl+B D` (faster workflow)
+- **Vim/Neovim integration** - Focus events enabled for better editor integration and responsiveness
+- **Improved status bar** - Minimal design showing `gcool@repo:branch` format with time and date
+- **Better window management** - Windows numbered from 1 (not 0) with automatic renumbering when windows close
+- **Visual improvements** - Color-coded pane borders (highlight active pane) and styled message displays
 
 **Managing the config:**
 - **Update**: If gcool adds new features, use the "Update Config" button to get the latest
@@ -680,6 +683,72 @@ gcool provides an opinionated tmux configuration that can be optionally installe
 - Changes apply to new tmux sessions only (existing sessions are unaffected)
 - The config section has warning markers - don't modify them as they're used for updates
 - You can safely delete the entire marked section if you no longer want it
+
+#### Detailed Configuration Breakdown
+
+The opinionated tmux configuration is organized into several categories for a comprehensive terminal experience:
+
+**Mouse & Scrolling:**
+```tmux
+set -g mouse on                                    # Enable mouse for all operations
+bind -n WheelUpPane if-shell ...                   # Custom wheel scrolling in copy mode
+set -g terminal-overrides 'xterm*:smcup@:rmcup@'   # Make scrolling work like normal terminal
+set -g allow-passthrough on                        # Enable passthrough for modern features
+set -ga terminal-features "*:hyperlinks"           # Clickable URLs and filesystem paths
+```
+
+**History & Buffer:**
+```tmux
+set -g history-limit 10000    # 10,000 lines of scrollback (default is usually 2,000)
+```
+
+**Colors & Terminal:**
+```tmux
+set -g default-terminal "screen-256color"          # Enable 256 color support
+set -ga terminal-overrides ",xterm-256color:Tc"    # True color (24-bit) support
+set -g focus-events on                             # Enable focus events for vim/neovim
+```
+
+**Window Management:**
+```tmux
+set -g base-index 1              # Start window numbering at 1 (not 0)
+set -g pane-base-index 1         # Start pane numbering at 1
+set -g renumber-windows on       # Automatically renumber windows when one is closed
+```
+
+**Keybindings:**
+```tmux
+bind-key -n C-d detach-client    # Ctrl+D to detach (quick escape)
+bind-key -n S-Right next-window  # Shift+Right arrow for next window
+bind-key -n S-Left previous-window  # Shift+Left arrow for previous window
+```
+*Note: Shift+Arrow navigation prevents conflicts with terminal readline shortcuts (Ctrl+Arrow for word jumping)*
+
+**Visual Styling:**
+```tmux
+# Status bar with repo:branch format
+set -g status-left "#[fg=green]gcool@#[fg=cyan]#(echo '#S' | sed 's/^gcool-\\([^-]*\\)-\\(.*\\)/\\1:\\2/') "
+set -g status-right "#[fg=yellow]%H:%M #[fg=white]%d-%b-%y"
+
+# Pane borders (subtle inactive, bright active)
+set -g pane-border-style fg=colour238           # Gray for inactive panes
+set -g pane-active-border-style fg=colour33     # Blue for active pane
+
+# Message styling (used for tmux command feedback)
+set -g message-style bg=colour33,fg=black,bold  # Blue background, bold text
+```
+
+**Why these settings?**
+- **Mouse support** makes tmux more accessible and intuitive for modern workflows
+- **Large scrollback** helps when reviewing logs, test output, or long command results
+- **True color** ensures your terminal theme and syntax highlighting looks perfect
+- **Shift+Arrow navigation** is faster than the default `Ctrl+B n/p` and doesn't conflict with shell shortcuts
+- **Quick detach with Ctrl+D** saves keystrokes compared to `Ctrl+B D`
+- **Window numbering from 1** makes it easier to jump to windows (Ctrl+B 1, Ctrl+B 2, etc.)
+- **Focus events** let vim/neovim know when you switch panes, enabling better autoread behavior
+- **Clickable links** let you Cmd+Click (macOS) or Ctrl+Click (Linux) URLs in the terminal
+
+The full configuration is embedded in the gcool binary and can be viewed in [`session/tmux.go`](./session/tmux.go) (lines 199-256).
 
 ### Themes
 
