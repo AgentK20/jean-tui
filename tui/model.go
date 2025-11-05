@@ -16,6 +16,7 @@ import (
 	"github.com/coollabsio/jean/config"
 	"github.com/coollabsio/jean/git"
 	"github.com/coollabsio/jean/github"
+	"github.com/coollabsio/jean/internal/version"
 	"github.com/coollabsio/jean/openrouter"
 	"github.com/coollabsio/jean/session"
 )
@@ -456,6 +457,7 @@ func (m Model) Init() tea.Cmd {
 		m.loadBaseBranch(),
 		m.loadSessions(),
 		m.scheduleActivityCheck(),
+		m.checkForUpdates(),
 		tea.EnterAltScreen,
 	)
 }
@@ -593,6 +595,13 @@ type (
 	apiKeyTestedMsg struct {
 		success bool
 		err     error
+	}
+
+	versionCheckMsg struct {
+		currentVersion  string
+		latestVersion   string
+		updateAvailable bool
+		err             error
 	}
 
 	renameGeneratedMsg struct {
@@ -1823,6 +1832,19 @@ func (m Model) checkSessionActivity() tea.Cmd {
 			return activityCheckedMsg{sessions: []session.Session{}, err: err}
 		}
 		return activityCheckedMsg{sessions: sessions, err: nil}
+	}
+}
+
+// checkForUpdates checks if a new version of jean is available
+func (m Model) checkForUpdates() tea.Cmd {
+	return func() tea.Msg {
+		current, latest, updateAvailable, err := version.CheckLatestVersionOfCli(false)
+		return versionCheckMsg{
+			currentVersion:  current,
+			latestVersion:   latest,
+			updateAvailable: updateAvailable,
+			err:             err,
+		}
 	}
 }
 

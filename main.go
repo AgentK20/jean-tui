@@ -14,7 +14,6 @@ import (
 	"github.com/coollabsio/jean/config"
 	"github.com/coollabsio/jean/install"
 	"github.com/coollabsio/jean/internal/update"
-	versionpkg "github.com/coollabsio/jean/internal/version"
 	"github.com/coollabsio/jean/tui"
 )
 
@@ -111,10 +110,6 @@ func main() {
 	// Get repo path and auto-claude setting
 	repoPath := *pathFlag
 	autoClaude := !*noClaudeFlag
-
-	// Check for updates (non-blocking, happens in background)
-	// This check is rate-limited to once every 10 minutes
-	go versionpkg.CheckLatestVersionOfCli(false)
 
 	// Create and run TUI
 	model := tui.NewModel(repoPath, autoClaude)

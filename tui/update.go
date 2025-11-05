@@ -960,6 +960,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = m.scheduleActivityCheck()
 		return m, cmd
 
+	case versionCheckMsg:
+		// Silently handle errors (don't show error notification for version check failures)
+		if msg.err != nil {
+			return m, nil
+		}
+
+		// Show notification only if update is available
+		if msg.updateAvailable {
+			notifMsg := fmt.Sprintf("Update available: %s → %s. Run: brew upgrade jean", msg.currentVersion, msg.latestVersion)
+			cmd = m.showInfoNotification(notifMsg)
+			return m, cmd
+		}
+		return m, nil
+
 	case commitMessageGeneratedMsg:
 		m.generatingCommit = false // Stop spinner animation
 		if msg.err != nil {

@@ -27,13 +27,14 @@ type GitRef struct {
 }
 
 // CheckLatestVersionOfCli checks if there's a newer version available
-func CheckLatestVersionOfCli(debug bool) {
+// Returns: current version, latest version, update available, error
+func CheckLatestVersionOfCli(debug bool) (string, string, bool, error) {
 	configManager, err := config.NewManager()
 	if err != nil {
 		if debug {
 			fmt.Printf("Debug: failed to load config: %v\n", err)
 		}
-		return
+		return CliVersion, "", false, err
 	}
 
 	// Check if we should skip the check based on last check time
@@ -45,7 +46,7 @@ func CheckLatestVersionOfCli(debug bool) {
 				if debug {
 					fmt.Printf("Debug: skipping version check (last checked %v ago)\n", time.Since(lastCheck))
 				}
-				return
+				return CliVersion, "", false, nil
 			}
 		}
 	}
@@ -64,7 +65,7 @@ func CheckLatestVersionOfCli(debug bool) {
 		if debug {
 			fmt.Printf("Debug: failed to fetch latest version: %v\n", err)
 		}
-		return
+		return CliVersion, "", false, err
 	}
 
 	// Compare versions
@@ -73,13 +74,11 @@ func CheckLatestVersionOfCli(debug bool) {
 		if debug {
 			fmt.Printf("Debug: failed to parse current version: %v\n", err)
 		}
-		return
+		return CliVersion, "", false, err
 	}
 
-	if latestVersion.GreaterThan(current) {
-		fmt.Printf("\nThere is a new version of jean available: %s (you have %s)\n", latestVersion.String(), CliVersion)
-		fmt.Printf("Please update with 'jean update'\n\n")
-	}
+	updateAvailable := latestVersion.GreaterThan(current)
+	return CliVersion, latestVersion.String(), updateAvailable, nil
 }
 
 // fetchLatestVersion fetches the latest version from GitHub API
