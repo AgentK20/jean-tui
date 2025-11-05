@@ -414,6 +414,8 @@ func (m Model) renderModal() string {
 
 	case scriptOutputModal:
 		return m.renderScriptOutputModal()
+	case onboardingModal:
+		return m.renderOnboardingModal()
 	}
 	return ""
 }
@@ -2335,6 +2337,80 @@ func (m Model) renderPRTypeModal() string {
 
 	// Center the modal
 	content := modalStyle.Width(m.width - 4).Render(b.String())
+	return lipgloss.Place(
+		m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		content,
+	)
+}
+
+func (m Model) renderOnboardingModal() string {
+	var b strings.Builder
+
+	b.WriteString(modalTitleStyle.Render("Welcome to gcool!"))
+	b.WriteString("\n\n")
+
+	// Brief introduction
+	b.WriteString(normalItemStyle.Render("gcool is a TUI for managing Git worktrees with tmux + Claude integration."))
+	b.WriteString("\n\n")
+
+	// Explain shell integration
+	b.WriteString(detailKeyStyle.Render("✓ Shell Integration"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("  Your shell wrapper is already configured and active!"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("  You can now switch worktrees seamlessly."))
+	b.WriteString("\n\n")
+
+	// Explain tmux config
+	b.WriteString(detailKeyStyle.Render("⚙  Tmux Configuration (Optional)"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("  We recommend installing our opinionated tmux config:"))
+	b.WriteString("\n")
+	b.WriteString(normalItemStyle.Copy().Foreground(mutedColor).Render("  • Mouse support for scrolling"))
+	b.WriteString("\n")
+	b.WriteString(normalItemStyle.Copy().Foreground(mutedColor).Render("  • Ctrl-D to detach (familiar keybinding)"))
+	b.WriteString("\n")
+	b.WriteString(normalItemStyle.Copy().Foreground(mutedColor).Render("  • 10,000 line scrollback buffer"))
+	b.WriteString("\n")
+	b.WriteString(normalItemStyle.Copy().Foreground(mutedColor).Render("  • Clean status bar with repo:branch info"))
+	b.WriteString("\n")
+	b.WriteString(normalItemStyle.Copy().Foreground(mutedColor).Render("  • Shift+arrow keys for window navigation"))
+	b.WriteString("\n\n")
+
+	// Check if tmux config is already installed
+	hasTmuxConfig, _ := m.sessionManager.HasGcoolTmuxConfig()
+	if hasTmuxConfig {
+		b.WriteString(helpStyle.Render("Note: Tmux config is already installed. You can update it or skip."))
+		b.WriteString("\n\n")
+	}
+
+	// Buttons
+	installBtn := "Install Tmux Config"
+	skipBtn := "Skip for Now"
+
+	if hasTmuxConfig {
+		installBtn = "Update Tmux Config"
+	}
+
+	if m.onboardingFocused == 0 {
+		b.WriteString(selectedButtonStyle.Render(installBtn))
+	} else {
+		b.WriteString(buttonStyle.Render(installBtn))
+	}
+	b.WriteString("  ")
+
+	if m.onboardingFocused == 1 {
+		b.WriteString(selectedButtonStyle.Render(skipBtn))
+	} else {
+		b.WriteString(buttonStyle.Render(skipBtn))
+	}
+
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("Tab/←→ navigate • Enter confirm • Esc skip"))
+
+	// Center the modal
+	content := modalStyle.Width(60).Render(b.String())
 	return lipgloss.Place(
 		m.width, m.height,
 		lipgloss.Center, lipgloss.Center,

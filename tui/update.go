@@ -104,6 +104,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
+		// After first successful worktree load, check if we need to show onboarding
+		return m, m.checkOnboardingStatus()
+
+	case onboardingStatusMsg:
+		// If user needs onboarding and we haven't shown it yet, show the modal
+		if msg.needsOnboarding {
+			m.modal = onboardingModal
+			m.onboardingFocused = 0 // Focus on "Install" button by default
+		}
 		return m, nil
 
 	case branchesLoadedMsg:
@@ -1034,6 +1043,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.aiPromptsStatusTime = time.Now()
 		return m, cmd
 
+	case tmuxConfigInstalledMsg:
+		if msg.err != nil {
+			return m, m.showErrorNotification("Failed to install tmux config: "+msg.err.Error(), 4*time.Second)
+		}
+		// Mark onboarding as completed
+		if err := m.configManager.SetOnboarded(); err != nil {
+			m.debugLog(fmt.Sprintf("Failed to save onboarding status: %v", err))
+		}
+		m.modal = noModal
+		return m, m.showSuccessNotification("✅ Tmux config installed! Restart tmux or run 'tmux source ~/.tmux.conf'", 4*time.Second)
+
 	case prFetchedForCreationMsg:
 		// Handle fetch completion before PR creation
 		m.prFetchingForCreation = false
@@ -1781,6 +1801,9 @@ func (m Model) handleModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case aiPromptsModal:
 		return m.handleAIPromptsModalInput(msg)
+
+	case onboardingModal:
+		return m.handleOnboardingModalInput(msg)
 
 	case helperModal:
 		return m.handleHelperModalInput(msg)
@@ -3483,6 +3506,41 @@ func (m Model) handleScriptOutputModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd)
 			}
 		}
 		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m Model) handleOnboardingModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Skip onboarding
+		if err := m.configManager.SetOnboarded(); err != nil {
+			m.debugLog(fmt.Sprintf("Failed to save onboarding status: %v", err))
+		}
+		m.modal = noModal
+		return m, nil
+
+	case "tab", "left", "right":
+		// Toggle between "Install" and "Skip" buttons
+		m.onboardingFocused = (m.onboardingFocused + 1) % 2
+		return m, nil
+
+	case "enter":
+		if m.onboardingFocused == 0 {
+			// Install tmux config
+			return m, func() tea.Msg {
+				err := m.sessionManager.AddGcoolTmuxConfig()
+				return tmuxConfigInstalledMsg{err: err}
+			}
+		} else {
+			// Skip - mark onboarding as completed
+			if err := m.configManager.SetOnboarded(); err != nil {
+				m.debugLog(fmt.Sprintf("Failed to save onboarding status: %v", err))
+			}
+			m.modal = noModal
+			return m, nil
+		}
 	}
 
 	return m, nil

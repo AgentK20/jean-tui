@@ -27,6 +27,7 @@ type Config struct {
 	DebugLoggingEnabled bool                   `json:"debug_logging_enabled"` // Enable debug logging to temp files
 	AIPrompts           *AIPrompts             `json:"ai_prompts,omitempty"` // Customizable AI prompts
 	WrapperChecksums    map[string]string      `json:"wrapper_checksums,omitempty"` // Shell -> SHA256 checksum of installed wrapper
+	Onboarded           bool                   `json:"onboarded"` // Whether the user has completed the onboarding flow
 }
 
 // PRInfo represents information about a pull request
@@ -223,7 +224,7 @@ func (m *Manager) SetLastUpdateCheckTime(timestamp string) error {
 
 // GetTheme returns the theme for a repository
 // Returns per-repo theme if set, otherwise returns global default theme
-// Returns "matrix" if no theme is configured
+// Returns "coolify" if no theme is configured
 func (m *Manager) GetTheme(repoPath string) string {
 	// Check if repo has a per-repo theme override
 	if repo, ok := m.config.Repositories[repoPath]; ok {
@@ -237,8 +238,8 @@ func (m *Manager) GetTheme(repoPath string) string {
 		return m.config.DefaultTheme
 	}
 
-	// Default to matrix theme
-	return "matrix"
+	// Default to coolify theme
+	return "coolify"
 }
 
 // SetTheme sets the theme for a specific repository
@@ -263,12 +264,12 @@ func (m *Manager) SetGlobalTheme(theme string) error {
 }
 
 // GetGlobalTheme returns the global default theme
-// Returns "matrix" if not set
+// Returns "coolify" if not set
 func (m *Manager) GetGlobalTheme() string {
 	if m.config.DefaultTheme != "" {
 		return m.config.DefaultTheme
 	}
-	return "matrix"
+	return "coolify"
 }
 
 // GetOpenRouterAPIKey returns the OpenRouter API key
@@ -571,5 +572,16 @@ func (m *Manager) SetWrapperChecksum(shell, checksum string) error {
 		m.config.WrapperChecksums = make(map[string]string)
 	}
 	m.config.WrapperChecksums[shell] = checksum
+	return m.save()
+}
+
+// IsOnboarded returns whether the user has completed the onboarding flow
+func (m *Manager) IsOnboarded() bool {
+	return m.config.Onboarded
+}
+
+// SetOnboarded marks the onboarding flow as completed
+func (m *Manager) SetOnboarded() error {
+	m.config.Onboarded = true
 	return m.save()
 }

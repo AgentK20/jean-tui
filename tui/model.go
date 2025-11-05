@@ -81,6 +81,7 @@ const (
 	mergeStrategyModal
 	aiPromptsModal
 	prTypeModal
+	onboardingModal
 )
 
 // NotificationType defines the type of notification
@@ -258,6 +259,9 @@ type Model struct {
 
 	// Initialization state
 	isInitializing bool // Suppress notifications during app startup (before first successful worktree load)
+
+	// Onboarding state
+	onboardingFocused int // Which button is focused in onboarding modal (0=install, 1=skip)
 }
 
 // NewModel creates a new TUI model
@@ -2027,5 +2031,23 @@ type aiPromptsLoadedMsg struct {
 
 // Message type for PR creation fetch completion
 type prFetchedForCreationMsg struct {
+	err error
+}
+
+// Message type for onboarding status check
+type onboardingStatusMsg struct {
+	needsOnboarding bool
+}
+
+// checkOnboardingStatus checks if the user has completed onboarding
+func (m Model) checkOnboardingStatus() tea.Cmd {
+	return func() tea.Msg {
+		isOnboarded := m.configManager.IsOnboarded()
+		return onboardingStatusMsg{needsOnboarding: !isOnboarded}
+	}
+}
+
+// Message type for tmux config installation from onboarding
+type tmuxConfigInstalledMsg struct {
 	err error
 }
