@@ -968,7 +968,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Show notification only if update is available
 		if msg.updateAvailable {
-			notifMsg := fmt.Sprintf("Update available: %s → %s. Run: brew upgrade jean", msg.currentVersion, msg.latestVersion)
+			notifMsg := fmt.Sprintf("Update available: %s → %s. Run: jean update", msg.currentVersion, msg.latestVersion)
 			cmd = m.showInfoNotification(notifMsg)
 			return m, cmd
 		}
