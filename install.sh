@@ -207,12 +207,40 @@ setup_shell_integration() {
     # Use jean init command to set up shell integration
     if /usr/local/bin/jean init 2>/dev/null; then
         print_success "Shell integration configured"
-        print_info "Restart your shell or source your RC file to activate jean"
         return 0
     else
         print_warning "Could not set up shell integration automatically"
         print_info "You can manually run: jean init"
         return 1
+    fi
+}
+
+# Auto-source shell RC file to activate jean in current session
+activate_shell_integration() {
+    print_header "Activating shell integration..."
+
+    CURRENT_SHELL=$(basename "$SHELL")
+
+    case "$CURRENT_SHELL" in
+        bash)
+            RC_FILE="$HOME/.bashrc"
+            ;;
+        zsh)
+            RC_FILE="$HOME/.zshrc"
+            ;;
+        fish)
+            RC_FILE="$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            print_warning "Could not auto-activate shell integration for $CURRENT_SHELL"
+            return 1
+            ;;
+    esac
+
+    if [[ -f "$RC_FILE" ]]; then
+        # Source the RC file in the current shell
+        # shellcheck disable=SC1090
+        source "$RC_FILE" 2>/dev/null && print_success "Shell integration activated"
     fi
 }
 
@@ -246,9 +274,7 @@ print_next_steps() {
     echo ""
     print_header "Installation complete!"
     echo ""
-    echo "Next steps:"
-    echo "  1. Restart your shell or reload your RC file (source ~/.bashrc, ~/.zshrc, etc.)"
-    echo "  2. Run: jean"
+    echo "You're all set! Run: jean"
     echo ""
     echo "For more information:"
     echo "  - Help: jean --help"
@@ -273,6 +299,7 @@ main() {
 
     install_binary
     setup_shell_integration
+    activate_shell_integration
     verify_installation
     print_next_steps
 }
