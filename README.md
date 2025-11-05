@@ -62,11 +62,36 @@ A powerful, feature-rich terminal user interface for managing Git worktrees with
 
 ## Installation
 
+### Quick Install (Recommended)
+
+The easiest way to install jean - just run the installation script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/coollabsio/jean/main/install.sh | bash
+```
+
+Or if you prefer to review before running:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/coollabsio/jean/main/install.sh -o install.sh
+chmod +x install.sh
+./install.sh
+```
+
+The installer will:
+- Download the precompiled binary (or build from source if needed)
+- Copy it to `/usr/local/bin/` (using sudo if necessary)
+- Set up shell integration for automatic directory switching
+
 ### Using Go Install
+
+If you have Go 1.21+ installed:
 
 ```bash
 go install github.com/coollabsio/jean@latest
 ```
+
+After installation, run `jean init` to set up shell integration.
 
 ### From Source
 
@@ -75,6 +100,7 @@ git clone https://github.com/coollabsio/jean
 cd jean
 go build -o jean
 sudo mv jean /usr/local/bin/
+jean init  # Set up shell integration
 ```
 
 ## Platform Support
