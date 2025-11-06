@@ -448,7 +448,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.debugLog("Triggering worktree refresh after PR creation")
-			cmd = m.showSuccessNotification("PR created / updated: " + msg.prURL, 5*time.Second)
+
+			// Create status message based on draft status
+			statusMsg := "PR created / updated"
+			if msg.isDraft {
+				statusMsg = "Draft PR created / updated"
+			}
+			cmd = m.showSuccessNotification(statusMsg + ": " + msg.prURL, 5*time.Second)
 			return m, tea.Batch(
 				cmd,
 				m.loadWorktrees(),
