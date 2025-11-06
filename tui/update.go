@@ -603,9 +603,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		} else {
 			m.debugLog(fmt.Sprintf("Commit created successfully with hash: %s", msg.commitHash))
+			// Save the commit message for use as PR title
+			m.lastCommitMessage = msg.subject
+
 			// Clear commit modal inputs for next use
 			m.commitSubjectInput.SetValue("")
-			m.commitBodyInput.SetValue("")
 			m.modalFocused = 0
 
 			// Show success message with commit hash
@@ -1071,18 +1073,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.autoCommitWithAI {
 				m.autoCommitWithAI = false
 				if wt := m.selectedWorktree(); wt != nil {
-					return m, m.createCommit(wt.Path, msg.subject, msg.body)
+					return m, m.createCommit(wt.Path, msg.subject)
 				}
 				return m, nil
 			}
 			// If in PR creation flow, auto-commit with generated message
 			if m.commitBeforePR {
 				cmd := m.showInfoNotification("🤖 Committing with AI-generated message...")
-				return m, tea.Batch(cmd, m.createCommit(m.prCreationPending, msg.subject, msg.body))
+				return m, tea.Batch(cmd, m.createCommit(m.prCreationPending, msg.subject))
 			}
 			// Otherwise populate the commit message fields with AI-generated content for user review
 			m.commitSubjectInput.SetValue(msg.subject)
-			m.commitBodyInput.SetValue(msg.body)
 			// Set success status message
 			m.commitModalStatus = "✅ Message generated successfully - review and edit if needed"
 			m.commitModalStatusTime = time.Now()
@@ -1196,8 +1197,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.modalFocused = 0
 					m.commitSubjectInput.SetValue("")
 					m.commitSubjectInput.Focus()
-					m.commitBodyInput.SetValue("")
-					m.commitBeforePR = true
+							m.commitBeforePR = true
 					m.prCreationPending = wt.Path // Set to trigger PR creation after commit
 					return m, nil
 				}
@@ -1679,8 +1679,7 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					m.modalFocused = 0
 					m.commitSubjectInput.SetValue("")
 					m.commitSubjectInput.Focus()
-					m.commitBodyInput.SetValue("")
-					m.commitBeforePR = true
+							m.commitBeforePR = true
 					m.prCreationPending = "" // Empty means push-only
 					return m, nil
 				}
@@ -1775,8 +1774,7 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.modalFocused = 0
 				m.commitSubjectInput.SetValue("")
 				m.commitSubjectInput.Focus()
-				m.commitBodyInput.SetValue("")
-				m.commitModalStatus = "" // Clear any previous status
+					m.commitModalStatus = "" // Clear any previous status
 				return m, nil
 			}
 		}
@@ -2465,29 +2463,23 @@ func (m Model) handleCommitModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.modal = noModal
 		m.commitSubjectInput.Blur()
-		m.commitBodyInput.Blur()
 		return m, nil
 
 	case "tab", "shift+tab":
-		// Cycle through: subject input -> body input -> commit button -> cancel button
-		m.modalFocused = (m.modalFocused + 1) % 4
+		// Cycle through: subject input -> commit button -> cancel button
+		m.modalFocused = (m.modalFocused + 1) % 3
 
 		// Update focus state
 		if m.modalFocused == 0 {
 			m.commitSubjectInput.Focus()
-			m.commitBodyInput.Blur()
-		} else if m.modalFocused == 1 {
-			m.commitSubjectInput.Blur()
-			m.commitBodyInput.Focus()
 		} else {
 			m.commitSubjectInput.Blur()
-			m.commitBodyInput.Blur()
 		}
 		return m, nil
 
 	case "g":
-		// Generate AI commit message (only if not focused on input fields and API key is configured)
-		if m.modalFocused > 1 && m.configManager != nil && m.configManager.GetOpenRouterAPIKey() != "" {
+		// Generate AI commit message (only if not focused on input field and API key is configured)
+		if m.modalFocused > 0 && m.configManager != nil && m.configManager.GetOpenRouterAPIKey() != "" {
 			if wt := m.selectedWorktree(); wt != nil {
 				m.generatingCommit = true
 				m.spinnerFrame = 0
@@ -2498,21 +2490,15 @@ func (m Model) handleCommitModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				)
 			}
 		}
-		// If in input field (modalFocused 0 or 1), fall through to handle text input
+		// If in input field (modalFocused 0), fall through to handle text input
 
 	case "enter":
 		if m.modalFocused == 0 {
-			// In subject input, move to body
+			// In subject input, move to commit button
 			m.modalFocused = 1
 			m.commitSubjectInput.Blur()
-			m.commitBodyInput.Focus()
 			return m, nil
 		} else if m.modalFocused == 1 {
-			// In body input, move to commit button
-			m.modalFocused = 2
-			m.commitBodyInput.Blur()
-			return m, nil
-		} else if m.modalFocused == 2 {
 			// Commit button
 			subject := m.commitSubjectInput.Value()
 			if subject == "" {
@@ -2534,19 +2520,16 @@ func (m Model) handleCommitModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-			body := m.commitBodyInput.Value()
 			if wt := m.selectedWorktree(); wt != nil {
 				cmd := m.showInfoNotification("Creating commit...")
 				m.modal = noModal
 				m.commitSubjectInput.Blur()
-				m.commitBodyInput.Blur()
-				return m, tea.Batch(cmd, m.createCommit(wt.Path, subject, body))
+				return m, tea.Batch(cmd, m.createCommit(wt.Path, subject))
 			}
 		} else {
-			// Cancel button (modalFocused == 3)
+			// Cancel button (modalFocused == 2)
 			m.modal = noModal
 			m.commitSubjectInput.Blur()
-			m.commitBodyInput.Blur()
 			return m, nil
 		}
 	}
@@ -2555,8 +2538,6 @@ func (m Model) handleCommitModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	if m.modalFocused == 0 {
 		m.commitSubjectInput, cmd = m.commitSubjectInput.Update(msg)
-	} else if m.modalFocused == 1 {
-		m.commitBodyInput, cmd = m.commitBodyInput.Update(msg)
 	}
 
 	return m, cmd
@@ -2875,6 +2856,52 @@ func (m Model) handleMergeStrategyModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd
 			notifyCmd,
 			m.mergePR(wt.Path, selectedPR.URL, mergeMethod),
 		)
+	}
+
+	return m, nil
+}
+
+func (m Model) handlePRTypeModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.modal = noModal
+		return m, nil
+
+	case "up":
+		if m.prTypeCursor > 0 {
+			m.prTypeCursor--
+		}
+		return m, nil
+
+	case "down":
+		if m.prTypeCursor < 1 {
+			m.prTypeCursor++
+		}
+		return m, nil
+
+	case "enter":
+		// User confirmed PR type selection
+		// Set isDraft based on selection (0=draft, 1=ready for review)
+		m.prIsDraft = (m.prTypeCursor == 0)
+
+		// Close modal and create PR with commit message as title
+		m.modal = noModal
+
+		// Use the last commit message as PR title
+		title := m.lastCommitMessage
+		if title == "" {
+			// Fallback if no commit message available (shouldn't happen in normal flow)
+			title = strings.ReplaceAll(m.prModalBranch, "-", " ")
+			title = strings.ReplaceAll(title, "_", " ")
+			title = strings.TrimSpace(title)
+			if len(title) > 0 {
+				title = strings.ToUpper(title[:1]) + title[1:]
+			}
+		}
+
+		// Create PR with commit message as title and empty description
+		cmd := m.showInfoNotification("Creating draft PR...")
+		return m, tea.Batch(cmd, m.createOrUpdatePR(m.prModalWorktreePath, m.prModalBranch, title, ""))
 	}
 
 	return m, nil
