@@ -960,7 +960,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Push completed
 		if msg.err != nil {
 			cmd = m.showErrorNotification("Failed to push: " + msg.err.Error(), 4*time.Second)
-			return m, cmd
+			return m, tea.Batch(
+				cmd,
+				m.loadWorktrees(),
+			)
 		}
 
 		// Push succeeded

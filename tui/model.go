@@ -1609,6 +1609,7 @@ func (m Model) renameBranchForPush(oldName, newName, worktreePath string) tea.Cm
 		}
 
 		// Step 2: Rename directory if it's a workspace worktree
+		newWorktreePath := worktreePath
 		workspacesDir, err := m.gitManager.GetWorkspacesDir()
 		if err == nil && strings.HasPrefix(worktreePath, workspacesDir) {
 			// Sanitize the new branch name for use as directory name
@@ -1617,13 +1618,15 @@ func (m Model) renameBranchForPush(oldName, newName, worktreePath string) tea.Cm
 			newPath := filepath.Join(workspacesDir, sanitizedDirName)
 
 			// Move the worktree directory (non-critical if it fails)
-			_ = m.gitManager.MoveWorktree(worktreePath, newPath)
+			if moveErr := m.gitManager.MoveWorktree(worktreePath, newPath); moveErr == nil {
+				newWorktreePath = newPath
+			}
 		}
 
 		return pushBranchRenamedMsg{
 			oldBranchName: oldName,
 			newBranchName: newName,
-			worktreePath:  worktreePath,
+			worktreePath:  newWorktreePath,
 			err:           nil,
 		}
 	}
