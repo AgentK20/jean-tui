@@ -10,14 +10,14 @@ import (
 	"time"
 
 	gover "github.com/hashicorp/go-version"
-	"github.com/coollabsio/jean/config"
+	"github.com/coollabsio/jean-tui/config"
 )
 
 const (
 	CliVersion    = "0.1.15"
 	CheckInterval = 10 * time.Minute
 	repoOwner     = "coollabsio"
-	repoName      = "jean"
+	repoName      = "jean-tui"
 )
 
 // GitRef represents a git reference from GitHub API

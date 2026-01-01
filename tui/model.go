@@ -11,12 +11,12 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/coollabsio/jean/config"
-	"github.com/coollabsio/jean/git"
-	"github.com/coollabsio/jean/github"
-	"github.com/coollabsio/jean/internal/version"
-	"github.com/coollabsio/jean/openrouter"
-	"github.com/coollabsio/jean/session"
+	"github.com/coollabsio/jean-tui/config"
+	"github.com/coollabsio/jean-tui/git"
+	"github.com/coollabsio/jean-tui/github"
+	"github.com/coollabsio/jean-tui/internal/version"
+	"github.com/coollabsio/jean-tui/openrouter"
+	"github.com/coollabsio/jean-tui/session"
 )
 
 // SwitchInfo contains information about the worktree to switch to

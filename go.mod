@@ -1,4 +1,4 @@
-module github.com/coollabsio/jean
+module github.com/coollabsio/jean-tui
 
 go 1.25.1
 

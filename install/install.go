@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/coollabsio/jean/config"
+	"github.com/coollabsio/jean-tui/config"
 )
 
 // Shell represents a shell type

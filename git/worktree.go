@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coollabsio/jean/config"
+	"github.com/coollabsio/jean-tui/config"
 )
 
 // Worktree represents a Git worktree

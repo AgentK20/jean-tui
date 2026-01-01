@@ -9,9 +9,9 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/coollabsio/jean/config"
-	"github.com/coollabsio/jean/git"
-	"github.com/coollabsio/jean/github"
+	"github.com/coollabsio/jean-tui/config"
+	"github.com/coollabsio/jean-tui/git"
+	"github.com/coollabsio/jean-tui/github"
 )
 
 // debugLog writes a message to the debug log file if debug logging is enabled

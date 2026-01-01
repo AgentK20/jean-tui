@@ -63,7 +63,7 @@ Follow these steps when releasing a new version:
 
    ## Installation
 
-   See the [README](https://github.com/coollabsio/jean#installation) for installation instructions.
+   See the [README](https://github.com/coollabsio/jean-tui#installation) for installation instructions.
    EOF
    )"
    ```
@@ -669,13 +669,13 @@ The current tmux integration pattern (`session/tmux.go`) can be extended to supp
 
 ## Module Information
 
-**Module Name**: `github.com/coollabsio/jean`
+**Module Name**: `github.com/coollabsio/jean-tui`
 
-All internal imports use `github.com/coollabsio/jean` as the import path. When adding new packages, use this as the base path:
-- `github.com/coollabsio/jean/tui`
-- `github.com/coollabsio/jean/git`
-- `github.com/coollabsio/jean/config`
-- `github.com/coollabsio/jean/session`
+All internal imports use `github.com/coollabsio/jean-tui` as the import path. When adding new packages, use this as the base path:
+- `github.com/coollabsio/jean-tui/tui`
+- `github.com/coollabsio/jean-tui/git`
+- `github.com/coollabsio/jean-tui/config`
+- `github.com/coollabsio/jean-tui/session`
 
 ## Prerequisites
 

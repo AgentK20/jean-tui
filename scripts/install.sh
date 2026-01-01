@@ -7,7 +7,7 @@
 set -e
 
 # Configuration
-REPO="coollabsio/jean"
+REPO="coollabsio/jean-tui"
 GITHUB_API="https://api.github.com/repos/$REPO"
 INSTALL_DIR=""
 VERSION=""

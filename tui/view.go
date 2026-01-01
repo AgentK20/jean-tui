@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/coollabsio/jean/config"
-	"github.com/coollabsio/jean/internal/version"
+	"github.com/coollabsio/jean-tui/config"
+	"github.com/coollabsio/jean-tui/internal/version"
 )
 
 // View renders the TUI

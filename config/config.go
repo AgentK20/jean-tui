@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"github.com/coollabsio/jean/openrouter"
+	"github.com/coollabsio/jean-tui/openrouter"
 )
 
 // AIPrompts represents customizable AI prompts for various generation tasks

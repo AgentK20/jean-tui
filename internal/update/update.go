@@ -17,7 +17,7 @@ import (
 
 const (
 	repoOwner = "coollabsio"
-	repoName  = "jean"
+	repoName  = "jean-tui"
 )
 
 // Release represents a GitHub release
