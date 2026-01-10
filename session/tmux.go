@@ -77,14 +77,19 @@ func (m *Manager) isClaudeAvailable() bool {
 	return err == nil
 }
 
+// DefaultClaudeArgs is the default arguments for Claude Code CLI
+// This should match config.DefaultClaudeArgs
+const DefaultClaudeArgs = "--permission-mode plan"
+
 // buildClaudeCommand constructs the proper claude command with flags
 // path is the worktree path to add with --add-dir
 // isInitialized determines whether to use --continue flag
+// Note: This is used as a fallback. The main flow uses shell wrappers with configurable args.
 func (m *Manager) buildClaudeCommand(path string, isInitialized bool) string {
 	if isInitialized {
-		return fmt.Sprintf("claude --add-dir %s --continue --permission-mode plan", path)
+		return fmt.Sprintf("claude --add-dir %s --continue %s", path, DefaultClaudeArgs)
 	}
-	return fmt.Sprintf("claude --add-dir %s --permission-mode plan", path)
+	return fmt.Sprintf("claude --add-dir %s %s", path, DefaultClaudeArgs)
 }
 
 // createOrAttach creates a new session or attaches to existing one

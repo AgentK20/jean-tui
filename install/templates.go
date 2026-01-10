@@ -96,12 +96,9 @@ jean() {
                 window_index="2"
             fi
 
-            # Build the base claude command arguments
-            # Custom claude_args (e.g., --dangerously-skip-permissions) are appended if set
-            local base_claude_args="--add-dir \"$worktree_path\" --permission-mode plan"
-            if [ -n "$claude_args" ]; then
-                base_claude_args="$base_claude_args $claude_args"
-            fi
+            # Build the claude command arguments
+            # claude_args contains the full args (defaults to --permission-mode plan if not customized)
+            local base_claude_args="--add-dir \"$worktree_path\" $claude_args"
 
             # Check if session exists
             if tmux has-session -t "=$session_name" 2>/dev/null; then
@@ -113,7 +110,7 @@ jean() {
                         if command -v claude >/dev/null 2>&1; then
                             if [ "$is_claude_initialized" = "true" ]; then
                                 # Try with --continue first, fallback to fresh start if it fails
-                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $claude_args || claude $base_claude_args"
+                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue $claude_args || claude $base_claude_args"
                             else
                                 tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                             fi
@@ -142,7 +139,7 @@ jean() {
                     if command -v claude >/dev/null 2>&1; then
                         if [ "$is_claude_initialized" = "true" ]; then
                             # Try with --continue first, fallback to fresh start if it fails
-                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $claude_args || claude $base_claude_args"
+                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue $claude_args || claude $base_claude_args"
                         else
                             tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                         fi
@@ -223,8 +220,8 @@ function jean
                 if test (count $parts) -ge 7
                     set is_claude_initialized $parts[7]
                 end
-                set custom_claude_args ""
-                if test (count $parts) -ge 8
+                set custom_claude_args "--permission-mode plan"
+                if test (count $parts) -ge 8; and test -n "$parts[8]"
                     set custom_claude_args $parts[8]
                 end
 
@@ -263,11 +260,8 @@ function jean
                     set window_index "2"
                 end
 
-                # Build base claude args with custom args appended if set
-                set base_claude_args "--add-dir \"$worktree_path\" --permission-mode plan"
-                if test -n "$custom_claude_args"
-                    set base_claude_args "$base_claude_args $custom_claude_args"
-                end
+                # Build base claude args (custom_claude_args contains the full args, defaults to --permission-mode plan)
+                set base_claude_args "--add-dir \"$worktree_path\" $custom_claude_args"
 
                 # Check if session exists
                 if tmux has-session -t "=$session_name" 2>/dev/null
@@ -280,7 +274,7 @@ function jean
                             if command -v claude &> /dev/null
                                 if test "$is_claude_initialized" = "true"
                                     # Try with --continue first, fallback to fresh start if it fails
-                                    tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $custom_claude_args; or claude $base_claude_args"
+                                    tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue $custom_claude_args; or claude $base_claude_args"
                                 else
                                     tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                                 end
@@ -306,7 +300,7 @@ function jean
                         if command -v claude &> /dev/null
                             if test "$is_claude_initialized" = "true"
                                 # Try with --continue first, fallback to fresh start if it fails
-                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $custom_claude_args; or claude $base_claude_args"
+                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue $custom_claude_args; or claude $base_claude_args"
                             else
                                 tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                             end
