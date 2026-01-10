@@ -1604,15 +1604,15 @@ func (m Model) renderSettingsModal() string {
 		{
 			name:        "Claude CLI Args",
 			key:         "l",
-			description: "Custom arguments for Claude Code CLI (e.g., --dangerously-skip-permissions)",
+			description: "Arguments for Claude Code CLI (default: --permission-mode plan)",
 			getCurrent: func() string {
 				if m.configManager != nil {
-					args := m.configManager.GetClaudeArgs()
-					if args != "" {
-						return args
+					// Check if a custom value is set (not the default)
+					if m.configManager.GetClaudeArgs() != config.DefaultClaudeArgs {
+						return m.configManager.GetClaudeArgs()
 					}
 				}
-				return "(none)"
+				return "(default)"
 			},
 		},
 	}
@@ -1822,13 +1822,15 @@ func (m Model) renderClaudeArgsModal() string {
 	b.WriteString("\n\n")
 
 	// Instructions
-	b.WriteString(helpStyle.Render("Set custom arguments to pass to Claude Code CLI."))
+	b.WriteString(helpStyle.Render("Set arguments to pass to Claude Code CLI."))
 	b.WriteString("\n")
-	b.WriteString(helpStyle.Render("Example: --dangerously-skip-permissions"))
+	b.WriteString(helpStyle.Render("Default: --permission-mode plan"))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Example: --permission-mode plan --dangerously-skip-permissions"))
 	b.WriteString("\n\n")
 
 	// Args input
-	argsLabel := "Custom Arguments:"
+	argsLabel := "Arguments:"
 	if m.modalFocused == 0 {
 		argsLabel = selectedItemStyle.Render(argsLabel)
 	} else {
@@ -1841,10 +1843,10 @@ func (m Model) renderClaudeArgsModal() string {
 
 	// Current claude command preview
 	currentArgs := m.claudeArgsInput.Value()
-	previewCmd := "claude --add-dir <path> --permission-mode plan"
-	if currentArgs != "" {
-		previewCmd = "claude --add-dir <path> --permission-mode plan " + currentArgs
+	if currentArgs == "" {
+		currentArgs = "--permission-mode plan"
 	}
+	previewCmd := "claude --add-dir <path> " + currentArgs
 	b.WriteString(helpStyle.Render("Preview: " + previewCmd))
 	b.WriteString("\n\n")
 

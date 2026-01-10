@@ -603,10 +603,16 @@ func (m *Manager) SetPRDefaultState(repoPath, state string) error {
 	return m.save()
 }
 
-// GetClaudeArgs returns the custom Claude Code CLI arguments
-// Returns empty string if not set (uses default args)
+// DefaultClaudeArgs is the default arguments for Claude Code CLI
+const DefaultClaudeArgs = "--permission-mode plan"
+
+// GetClaudeArgs returns the Claude Code CLI arguments
+// Returns "--permission-mode plan" if not set
 func (m *Manager) GetClaudeArgs() string {
-	return m.config.ClaudeArgs
+	if m.config.ClaudeArgs != "" {
+		return m.config.ClaudeArgs
+	}
+	return DefaultClaudeArgs
 }
 
 // SetClaudeArgs sets the custom Claude Code CLI arguments
