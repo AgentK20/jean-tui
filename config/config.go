@@ -28,6 +28,7 @@ type Config struct {
 	AIPrompts           *AIPrompts             `json:"ai_prompts,omitempty"` // Customizable AI prompts
 	WrapperChecksums    map[string]string      `json:"wrapper_checksums,omitempty"` // Shell -> SHA256 checksum of installed wrapper
 	Onboarded           bool                   `json:"onboarded"` // Whether the user has completed the onboarding flow
+	ClaudeArgs          string                 `json:"claude_args,omitempty"` // Custom arguments for Claude Code CLI (e.g., "--dangerously-skip-permissions")
 }
 
 // PRInfo represents information about a pull request
@@ -599,5 +600,18 @@ func (m *Manager) SetPRDefaultState(repoPath, state string) error {
 	}
 
 	m.config.Repositories[repoPath].PRDefaultState = state
+	return m.save()
+}
+
+// GetClaudeArgs returns the custom Claude Code CLI arguments
+// Returns empty string if not set (uses default args)
+func (m *Manager) GetClaudeArgs() string {
+	return m.config.ClaudeArgs
+}
+
+// SetClaudeArgs sets the custom Claude Code CLI arguments
+// Example: "--dangerously-skip-permissions" or "--allowedTools Edit,Write,Bash"
+func (m *Manager) SetClaudeArgs(args string) error {
+	m.config.ClaudeArgs = args
 	return m.save()
 }
