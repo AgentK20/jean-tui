@@ -444,6 +444,8 @@ func (m Model) renderModal() string {
 		return m.renderOnboardingModal()
 	case gitInitModal:
 		return m.renderGitInitModal()
+	case claudeArgsModal:
+		return m.renderClaudeArgsModal()
 	}
 	return ""
 }
@@ -1599,6 +1601,20 @@ func (m Model) renderSettingsModal() string {
 				return "Ready for Review"
 			},
 		},
+		{
+			name:        "Claude CLI Args",
+			key:         "l",
+			description: "Custom arguments for Claude Code CLI (e.g., --dangerously-skip-permissions)",
+			getCurrent: func() string {
+				if m.configManager != nil {
+					args := m.configManager.GetClaudeArgs()
+					if args != "" {
+						return args
+					}
+				}
+				return "(none)"
+			},
+		},
 	}
 
 	// Render settings list
@@ -1789,6 +1805,75 @@ func (m Model) renderPRStateSettingsModal() string {
 
 	// Help text
 	b.WriteString(helpStyle.Render("↑/↓ select • enter confirm • esc cancel"))
+
+	// Center the modal
+	content := modalStyle.Width(m.width - 4).Render(b.String())
+	return lipgloss.Place(
+		m.width, m.height,
+		lipgloss.Center, lipgloss.Center,
+		content,
+	)
+}
+
+func (m Model) renderClaudeArgsModal() string {
+	var b strings.Builder
+
+	b.WriteString(modalTitleStyle.Render("Claude CLI Arguments"))
+	b.WriteString("\n\n")
+
+	// Instructions
+	b.WriteString(helpStyle.Render("Set custom arguments to pass to Claude Code CLI."))
+	b.WriteString("\n")
+	b.WriteString(helpStyle.Render("Example: --dangerously-skip-permissions"))
+	b.WriteString("\n\n")
+
+	// Args input
+	argsLabel := "Custom Arguments:"
+	if m.modalFocused == 0 {
+		argsLabel = selectedItemStyle.Render(argsLabel)
+	} else {
+		argsLabel = inputLabelStyle.Render(argsLabel)
+	}
+	b.WriteString(argsLabel)
+	b.WriteString("\n")
+	b.WriteString(m.claudeArgsInput.View())
+	b.WriteString("\n\n")
+
+	// Current claude command preview
+	currentArgs := m.claudeArgsInput.Value()
+	previewCmd := "claude --add-dir <path> --permission-mode plan"
+	if currentArgs != "" {
+		previewCmd = "claude --add-dir <path> --permission-mode plan " + currentArgs
+	}
+	b.WriteString(helpStyle.Render("Preview: " + previewCmd))
+	b.WriteString("\n\n")
+
+	// Buttons
+	saveBtn := "Save"
+	cancelBtn := "Cancel"
+	clearBtn := "Clear"
+
+	if m.modalFocused == 1 {
+		b.WriteString(selectedButtonStyle.Render(saveBtn))
+	} else {
+		b.WriteString(buttonStyle.Render(saveBtn))
+	}
+	b.WriteString(" ")
+	if m.modalFocused == 2 {
+		b.WriteString(selectedCancelButtonStyle.Render(cancelBtn))
+	} else {
+		b.WriteString(cancelButtonStyle.Render(cancelBtn))
+	}
+	b.WriteString(" ")
+	if m.modalFocused == 3 {
+		b.WriteString(selectedCancelButtonStyle.Render(clearBtn))
+	} else {
+		b.WriteString(cancelButtonStyle.Render(clearBtn))
+	}
+	b.WriteString("\n\n")
+
+	// Help text
+	b.WriteString(helpStyle.Render("Tab to navigate • Enter to confirm • Esc to cancel"))
 
 	// Center the modal
 	content := modalStyle.Width(m.width - 4).Render(b.String())

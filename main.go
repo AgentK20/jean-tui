@@ -130,7 +130,7 @@ func main() {
 	if m, ok := finalModel.(tui.Model); ok {
 		switchInfo := m.GetSwitchInfo()
 		if switchInfo.Path != "" {
-			// Format: path|branch|auto-claude|target-window|script-command|session-name|is-claude-initialized
+			// Format: path|branch|auto-claude|target-window|script-command|session-name|is-claude-initialized|claude-args
 			autoCl := "false"
 			if switchInfo.AutoClaude {
 				autoCl = "true"
@@ -143,7 +143,7 @@ func main() {
 			if switchInfo.IsClaudeInitialized {
 				isInitialized = "true"
 			}
-			switchData := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s", switchInfo.Path, switchInfo.Branch, autoCl, targetWindow, switchInfo.ScriptCommand, switchInfo.SessionName, isInitialized)
+			switchData := fmt.Sprintf("%s|%s|%s|%s|%s|%s|%s|%s", switchInfo.Path, switchInfo.Branch, autoCl, targetWindow, switchInfo.ScriptCommand, switchInfo.SessionName, isInitialized, switchInfo.ClaudeArgs)
 
 			// Debug: log what we're writing
 			debugLog(fmt.Sprintf("DEBUG main: switchInfo={Path:%q Branch:%q AutoClaude:%v TargetWindow:%q SessionName:%q}", switchInfo.Path, switchInfo.Branch, switchInfo.AutoClaude, switchInfo.TargetWindow, switchInfo.SessionName))

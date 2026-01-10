@@ -1553,6 +1553,10 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			// Store pending switch info and ensure worktree exists
 			// SessionName includes repo basename for uniqueness across repositories (e.g., jean-reponame-branch)
+			claudeArgs := ""
+			if m.configManager != nil {
+				claudeArgs = m.configManager.GetClaudeArgs()
+			}
 			m.pendingSwitchInfo = &SwitchInfo{
 				Path:                 wt.Path,
 				Branch:               wt.Branch,
@@ -1560,6 +1564,7 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				AutoClaude:           m.autoClaude,
 				TargetWindow:         "claude", // Attach to Claude window
 				IsClaudeInitialized:  isInitialized,
+				ClaudeArgs:           claudeArgs,
 			}
 			m.ensuringWorktree = true
 			cmd = m.showInfoNotification("Preparing workspace...")
@@ -1615,12 +1620,18 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				_ = m.configManager.SetLastSelectedBranch(m.repoPath, wt.Branch)
 			}
 			// Store pending switch info and ensure worktree exists
+			// Include ClaudeArgs in case the session needs to create a Claude window later
+			claudeArgsForTerminal := ""
+			if m.configManager != nil {
+				claudeArgsForTerminal = m.configManager.GetClaudeArgs()
+			}
 			m.pendingSwitchInfo = &SwitchInfo{
 				Path:         wt.Path,
 				Branch:       wt.Branch,
 				SessionName:  wt.ClaudeSessionName,     // Pre-sanitized session name with repo basename
 				AutoClaude:   false,                    // Never auto-start Claude for terminal window
 				TargetWindow: "terminal",               // Attach to terminal window
+				ClaudeArgs:   claudeArgsForTerminal,
 			}
 			m.ensuringWorktree = true
 			m.debugLog("DEBUG: ensuring worktree exists before opening terminal")
@@ -2014,6 +2025,9 @@ func (m Model) handleModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case gitInitModal:
 		return m.handleGitInitModalInput(msg)
+
+	case claudeArgsModal:
+		return m.handleClaudeArgsModalInput(msg)
 
 	case helperModal:
 		return m.handleHelperModalInput(msg)
@@ -3210,7 +3224,7 @@ func (m Model) handleSettingsModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "down":
-		if m.settingsIndex < 6 { // Now 7 settings (editor, theme, base branch, tmux config, AI integration, debug logs, PR default state)
+		if m.settingsIndex < 7 { // Now 8 settings (editor, theme, base branch, tmux config, AI integration, debug logs, PR default state, Claude CLI args)
 			m.settingsIndex++
 		}
 
@@ -3253,6 +3267,12 @@ func (m Model) handleSettingsModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		// Quick key for PR Default State
 		m.settingsIndex = 6
+		msg = tea.KeyMsg{Type: tea.KeyEnter}
+		return m.handleSettingsModalInput(msg)
+
+	case "l":
+		// Quick key for Claude CLI Args
+		m.settingsIndex = 7
 		msg = tea.KeyMsg{Type: tea.KeyEnter}
 		return m.handleSettingsModalInput(msg)
 
@@ -3358,6 +3378,18 @@ func (m Model) handleSettingsModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return m, nil
+
+		case 7:
+			// Claude CLI Args setting - open claude args modal
+			m.modal = claudeArgsModal
+			m.modalFocused = 0
+
+			// Load current value into input
+			if m.configManager != nil {
+				m.claudeArgsInput.SetValue(m.configManager.GetClaudeArgs())
+			}
+			m.claudeArgsInput.Focus()
+			return m, nil
 		}
 	}
 
@@ -3410,6 +3442,75 @@ func (m Model) handlePRStateSettingsModalInput(msg tea.KeyMsg) (tea.Model, tea.C
 			return m, m.showSuccessNotification("PR default state set to Draft", 2*time.Second)
 		} else {
 			return m, m.showSuccessNotification("PR default state set to Ready for Review", 2*time.Second)
+		}
+	}
+
+	return m, nil
+}
+
+func (m Model) handleClaudeArgsModalInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg.String() {
+	case "esc":
+		// Close without saving
+		m.claudeArgsInput.Blur()
+		m.modal = settingsModal
+		m.settingsIndex = 7 // Go back to Claude CLI Args option in settings
+		return m, nil
+
+	case "tab":
+		// Tab cycles through: input (0) -> save button (1) -> cancel button (2) -> clear button (3) -> back to input
+		m.modalFocused = (m.modalFocused + 1) % 4
+		if m.modalFocused == 0 {
+			m.claudeArgsInput.Focus()
+		} else {
+			m.claudeArgsInput.Blur()
+		}
+		return m, nil
+
+	case "enter":
+		switch m.modalFocused {
+		case 0:
+			// In input field, move to save button
+			m.modalFocused = 1
+			m.claudeArgsInput.Blur()
+		case 1:
+			// Save button pressed
+			if m.configManager != nil {
+				args := m.claudeArgsInput.Value()
+				if err := m.configManager.SetClaudeArgs(args); err != nil {
+					cmd := m.showErrorNotification("Failed to save Claude args: "+err.Error(), 3*time.Second)
+					return m, cmd
+				}
+			}
+			m.claudeArgsInput.Blur()
+			m.modal = settingsModal
+			m.settingsIndex = 7
+			if m.claudeArgsInput.Value() == "" {
+				return m, m.showSuccessNotification("Claude CLI args cleared", 2*time.Second)
+			}
+			return m, m.showSuccessNotification("Claude CLI args saved", 2*time.Second)
+		case 2:
+			// Cancel button pressed
+			m.claudeArgsInput.Blur()
+			m.modal = settingsModal
+			m.settingsIndex = 7
+			return m, nil
+		case 3:
+			// Clear button pressed
+			m.claudeArgsInput.SetValue("")
+			m.modalFocused = 0
+			m.claudeArgsInput.Focus()
+			return m, nil
+		}
+		return m, nil
+
+	default:
+		// Handle text input
+		if m.modalFocused == 0 {
+			m.claudeArgsInput, cmd = m.claudeArgsInput.Update(msg)
+			return m, cmd
 		}
 	}
 

@@ -41,7 +41,7 @@ jean() {
         if [ "$debug_enabled" = "true" ]; then
         echo "DEBUG wrapper: switch file exists and has content" >> "$debug_log"
         fi
-        # Read the switch info: path|branch|auto-claude|target-window|script-command|claude-session-name|is-claude-initialized
+        # Read the switch info: path|branch|auto-claude|target-window|script-command|claude-session-name|is-claude-initialized|claude-args
         local switch_info=$(cat "$temp_file")
         if [ "$debug_enabled" = "true" ]; then
         echo "DEBUG wrapper: switch_info=$switch_info" >> "$debug_log"
@@ -52,7 +52,7 @@ jean() {
         fi
 
         # Parse the info (using worktree_path instead of path to avoid PATH conflict)
-        IFS='|' read -r worktree_path branch auto_claude target_window script_command claude_session_name is_claude_initialized <<< "$switch_info"
+        IFS='|' read -r worktree_path branch auto_claude target_window script_command claude_session_name is_claude_initialized claude_args <<< "$switch_info"
 
         # Check if we got valid data (has at least two pipes)
         if [[ "$switch_info" == *"|"*"|"* ]]; then
@@ -96,6 +96,13 @@ jean() {
                 window_index="2"
             fi
 
+            # Build the base claude command arguments
+            # Custom claude_args (e.g., --dangerously-skip-permissions) are appended if set
+            local base_claude_args="--add-dir \"$worktree_path\" --permission-mode plan"
+            if [ -n "$claude_args" ]; then
+                base_claude_args="$base_claude_args $claude_args"
+            fi
+
             # Check if session exists
             if tmux has-session -t "=$session_name" 2>/dev/null; then
                 # Session exists - check if target window exists
@@ -106,9 +113,9 @@ jean() {
                         if command -v claude >/dev/null 2>&1; then
                             if [ "$is_claude_initialized" = "true" ]; then
                                 # Try with --continue first, fallback to fresh start if it fails
-                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan || claude --add-dir \"$worktree_path\" --permission-mode plan"
+                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $claude_args || claude $base_claude_args"
                             else
-                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --permission-mode plan"
+                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                             fi
                         else
                             # Fallback to shell if claude not available
@@ -135,9 +142,9 @@ jean() {
                     if command -v claude >/dev/null 2>&1; then
                         if [ "$is_claude_initialized" = "true" ]; then
                             # Try with --continue first, fallback to fresh start if it fails
-                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan || claude --add-dir \"$worktree_path\" --permission-mode plan"
+                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $claude_args || claude $base_claude_args"
                         else
-                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --permission-mode plan"
+                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                         fi
                     else
                         # Fallback: create window with shell
@@ -192,7 +199,7 @@ function jean
 
         # Check if switch info was written
         if test -f "$temp_file" -a -s "$temp_file"
-            # Read the switch info: path|branch|auto-claude|target-window|script-command|claude-session-name|is-claude-initialized
+            # Read the switch info: path|branch|auto-claude|target-window|script-command|claude-session-name|is-claude-initialized|claude-args
             set switch_info (cat $temp_file)
             rm $temp_file
 
@@ -215,6 +222,10 @@ function jean
                 set is_claude_initialized "false"
                 if test (count $parts) -ge 7
                     set is_claude_initialized $parts[7]
+                end
+                set custom_claude_args ""
+                if test (count $parts) -ge 8
+                    set custom_claude_args $parts[8]
                 end
 
                 # Check if tmux is available
@@ -252,6 +263,12 @@ function jean
                     set window_index "2"
                 end
 
+                # Build base claude args with custom args appended if set
+                set base_claude_args "--add-dir \"$worktree_path\" --permission-mode plan"
+                if test -n "$custom_claude_args"
+                    set base_claude_args "$base_claude_args $custom_claude_args"
+                end
+
                 # Check if session exists
                 if tmux has-session -t "=$session_name" 2>/dev/null
                     # Session exists - check if target window exists
@@ -261,12 +278,12 @@ function jean
                         if test "$target_window" = "claude"
                             # Create claude window
                             if command -v claude &> /dev/null
-                                set claude_args "--add-dir \"$worktree_path\" --permission-mode plan"
                                 if test "$is_claude_initialized" = "true"
                                     # Try with --continue first, fallback to fresh start if it fails
-                                    set claude_args "--add-dir \"$worktree_path\" --continue --permission-mode plan; or claude --add-dir \"$worktree_path\" --permission-mode plan"
+                                    tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $custom_claude_args; or claude $base_claude_args"
+                                else
+                                    tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                                 end
-                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $claude_args"
                             else
                                 # Fallback to shell
                                 tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude"
@@ -287,12 +304,12 @@ function jean
                     # Window 2: claude (if auto-claude is true)
                     if test "$auto_claude" = "true"
                         if command -v claude &> /dev/null
-                            set claude_args "--add-dir \"$worktree_path\" --permission-mode plan"
                             if test "$is_claude_initialized" = "true"
                                 # Try with --continue first, fallback to fresh start if it fails
-                                set claude_args "--add-dir \"$worktree_path\" --continue --permission-mode plan; or claude --add-dir \"$worktree_path\" --permission-mode plan"
+                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude --add-dir \"$worktree_path\" --continue --permission-mode plan $custom_claude_args; or claude $base_claude_args"
+                            else
+                                tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $base_claude_args"
                             end
-                            tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude" "claude $claude_args"
                         else
                             # Fallback: create window with shell
                             tmux new-window -t "$session_name:2" -c "$worktree_path" -n "claude"

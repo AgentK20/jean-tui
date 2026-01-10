@@ -28,6 +28,7 @@ type SwitchInfo struct {
 	ScriptCommand        string // If set, run this script command instead of shell/Claude
 	SessionName          string // Custom name for Claude session (for --session flag)
 	IsClaudeInitialized  bool   // Whether this Claude session has been initialized before
+	ClaudeArgs           string // Custom arguments for Claude Code CLI (e.g., "--dangerously-skip-permissions")
 }
 
 type modalType int
@@ -58,6 +59,7 @@ const (
 	prStateSettingsModal
 	onboardingModal
 	gitInitModal
+	claudeArgsModal
 )
 
 // NotificationType defines the type of notification
@@ -165,6 +167,9 @@ type Model struct {
 	commitModalStatus      string                 // Status message for commit modal (error/success from AI)
 	commitModalStatusTime  time.Time              // When the status was set
 	generatingCommit       bool                   // Whether we're currently generating a commit message
+
+	// Claude Args modal state
+	claudeArgsInput        textinput.Model        // Input field for custom Claude CLI arguments
 	spinnerFrame           int                    // Current spinner animation frame (0-3)
 
 	// Rename modal status (AI generation)
@@ -294,6 +299,11 @@ func NewModel(repoPath string, autoClaude bool) Model {
 	prSearchInput.CharLimit = 100
 	prSearchInput.Width = 50
 
+	claudeArgsInput := textinput.New()
+	claudeArgsInput.Placeholder = "--dangerously-skip-permissions"
+	claudeArgsInput.CharLimit = 256
+	claudeArgsInput.Width = 60
+
 	// Initialize AI prompt textareas (for customizing prompts)
 	aiPromptCommitInput := textarea.New()
 	aiPromptCommitInput.Placeholder = "Commit message prompt (must contain {diff})"
@@ -364,6 +374,7 @@ func NewModel(repoPath string, autoClaude bool) Model {
 		prDescriptionInput: prDescriptionInput,
 		aiAPIKeyInput:      aiAPIKeyInput,
 		prSearchInput:      prSearchInput,
+		claudeArgsInput:    claudeArgsInput,
 		aiPromptCommitInput: aiPromptCommitInput,
 		aiPromptBranchInput: aiPromptBranchInput,
 		aiPromptPRInput:     aiPromptPRInput,
