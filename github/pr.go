@@ -10,6 +10,13 @@ import (
 // Manager handles GitHub operations using gh CLI
 type Manager struct{}
 
+// isProjectsClassicWarning checks if an error output is just the GitHub Projects (classic) deprecation warning
+// This warning doesn't indicate actual failure - the operation still succeeds
+// See: https://github.blog/changelog/2024-05-23-sunset-notice-projects-classic/
+func isProjectsClassicWarning(output string) bool {
+	return strings.Contains(output, "Projects (classic)") || strings.Contains(output, "projectCards")
+}
+
 // PRInfo holds information about a pull request
 type PRInfo struct {
 	Number      int    `json:"number"`
@@ -80,12 +87,26 @@ func (m *Manager) CreatePR(worktreePath, branch, baseBranch, title, description 
 	cmd := exec.Command("gh", args...)
 	cmd.Dir = worktreePath
 	output, err := cmd.CombinedOutput()
+	outputStr := string(output)
+
 	if err != nil {
-		return "", fmt.Errorf("failed to create PR: %s", string(output))
+		// Check if it's just the Projects (classic) deprecation warning
+		// In this case, the PR was likely created successfully
+		if isProjectsClassicWarning(outputStr) {
+			// Try to extract PR URL from the output anyway
+			lines := strings.Split(strings.TrimSpace(outputStr), "\n")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "https://github.com/") && strings.Contains(line, "/pull/") {
+					return line, nil
+				}
+			}
+		}
+		return "", fmt.Errorf("failed to create PR: %s", outputStr)
 	}
 
 	// Extract PR URL from output
-	prURL := strings.TrimSpace(string(output))
+	prURL := strings.TrimSpace(outputStr)
 	return prURL, nil
 }
 
@@ -157,7 +178,12 @@ func (m *Manager) UpdatePR(worktreePath, prIdentifier, title, description string
 	cmd.Dir = worktreePath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to update PR: %s", string(output))
+		outputStr := string(output)
+		// Ignore GitHub's Projects (classic) deprecation warning - the PR update still succeeds
+		if isProjectsClassicWarning(outputStr) {
+			return nil
+		}
+		return fmt.Errorf("failed to update PR: %s", outputStr)
 	}
 
 	return nil
@@ -184,7 +210,11 @@ func (m *Manager) MarkPRReady(worktreePath, prURL string) error {
 	cmd.Dir = worktreePath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to mark PR as ready: %s", string(output))
+		outputStr := string(output)
+		if isProjectsClassicWarning(outputStr) {
+			return nil
+		}
+		return fmt.Errorf("failed to mark PR as ready: %s", outputStr)
 	}
 
 	return nil
@@ -223,7 +253,11 @@ func (m *Manager) MergePR(worktreePath, prURL, mergeMethod string) error {
 	cmd.Dir = worktreePath
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("failed to merge PR: %s", string(output))
+		outputStr := string(output)
+		if isProjectsClassicWarning(outputStr) {
+			return nil
+		}
+		return fmt.Errorf("failed to merge PR: %s", outputStr)
 	}
 
 	return nil
