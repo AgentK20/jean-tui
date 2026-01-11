@@ -1308,6 +1308,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case prStatusCheckedMsg:
+		// Handle PR status check result
+		if msg.err != nil {
+			return m, m.showErrorNotification("Failed to check PR status: "+msg.err.Error(), 3*time.Second)
+		}
+
+		// Check if the PR is actually still open
+		if msg.actualStatus == "open" {
+			// PR is still open - open it in browser
+			m.debugLog(fmt.Sprintf("prStatusCheckedMsg: PR #%d is still open, opening in browser", msg.existingPR.PRNumber))
+			browserCmd := exec.Command("gh", "pr", "view", msg.existingPR.URL, "--web")
+			err := browserCmd.Start()
+			if err != nil {
+				return m, m.showErrorNotification("Failed to open PR in browser: "+err.Error(), 3*time.Second)
+			}
+			notifyMsg := fmt.Sprintf("PR #%d is open. Opening in browser...", msg.existingPR.PRNumber)
+			return m, m.showInfoNotification(notifyMsg)
+		}
+
+		// PR is merged or closed - update local config and proceed to create new PR
+		m.debugLog(fmt.Sprintf("prStatusCheckedMsg: PR #%d is %s, updating config and creating new PR", msg.existingPR.PRNumber, msg.actualStatus))
+
+		// Update the local config with actual status
+		if m.configManager != nil {
+			if err := m.configManager.UpdatePRStatus(m.repoPath, msg.branch, msg.existingPR.URL, msg.actualStatus); err != nil {
+				m.debugLog(fmt.Sprintf("Failed to update PR status in config: %v", err))
+			}
+		}
+
+		// Proceed to create a new PR - fetch from remote first
+		cmd = m.showInfoNotification("Previous PR was " + msg.actualStatus + ". Creating new PR...")
+		m.prFetchingForCreation = true
+		return m, tea.Batch(cmd, m.fetchRemoteForPR(msg.worktreePath))
+
 	case spinnerTickMsg:
 		// Update spinner animation frame and schedule next tick if still generating
 		if m.generatingCommit {
@@ -1708,15 +1742,10 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.configManager != nil {
 				existingPR := m.configManager.GetLatestPR(m.repoPath, wt.Branch)
 				if existingPR != nil && existingPR.Status == "open" {
-					m.debugLog(fmt.Sprintf("P keybinding: found existing PR #%d for branch %s, opening in browser", existingPR.PRNumber, wt.Branch))
-					// Open the existing PR in the browser
-					cmd := exec.Command("gh", "pr", "view", existingPR.URL, "--web")
-					err := cmd.Start()
-					if err != nil {
-						return m, m.showErrorNotification("Failed to open PR in browser: "+err.Error(), 3*time.Second)
-					}
-					notifyMsg := fmt.Sprintf("PR #%d already exists for this branch. Opening in browser...", existingPR.PRNumber)
-					return m, m.showInfoNotification(notifyMsg)
+					// Verify the PR is actually still open on GitHub before opening
+					m.debugLog(fmt.Sprintf("P keybinding: found existing PR #%d for branch %s, checking actual status", existingPR.PRNumber, wt.Branch))
+					cmd = m.showInfoNotification("Checking PR status...")
+					return m, tea.Batch(cmd, m.checkPRStatusBeforeCreate(existingPR, wt.Path, wt.Branch))
 				}
 			}
 
