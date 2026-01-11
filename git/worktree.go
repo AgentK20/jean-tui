@@ -365,6 +365,9 @@ func (m *Manager) Remove(path string, force bool) error {
 		branchName = ""
 	}
 
+	// Clean up any symlinks pointing to this worktree (created during renames)
+	m.cleanupSymlinksTo(path)
+
 	// Remove the worktree
 	args := []string{"-C", m.repoPath, "worktree", "remove"}
 
@@ -389,6 +392,54 @@ func (m *Manager) Remove(path string, force bool) error {
 	}
 
 	return nil
+}
+
+// cleanupSymlinksTo removes any symlinks in .workspaces that point to the given path
+// This is called when removing a worktree to clean up symlinks created during renames
+func (m *Manager) cleanupSymlinksTo(targetPath string) {
+	workspacesDir := filepath.Join(m.repoPath, ".workspaces")
+
+	entries, err := os.ReadDir(workspacesDir)
+	if err != nil {
+		return // Can't read directory, nothing to clean up
+	}
+
+	// Get absolute path of target for comparison
+	absTarget, err := filepath.Abs(targetPath)
+	if err != nil {
+		absTarget = targetPath
+	}
+
+	for _, entry := range entries {
+		entryPath := filepath.Join(workspacesDir, entry.Name())
+
+		// Check if it's a symlink
+		info, err := os.Lstat(entryPath)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			continue // Not a symlink or error reading
+		}
+
+		// Read where the symlink points
+		linkTarget, err := os.Readlink(entryPath)
+		if err != nil {
+			continue
+		}
+
+		// Make linkTarget absolute if it's relative
+		if !filepath.IsAbs(linkTarget) {
+			linkTarget = filepath.Join(workspacesDir, linkTarget)
+		}
+
+		absLinkTarget, err := filepath.Abs(linkTarget)
+		if err != nil {
+			absLinkTarget = linkTarget
+		}
+
+		// If symlink points to our target (directly or indirectly), remove it
+		if absLinkTarget == absTarget {
+			os.Remove(entryPath) // Ignore errors - best effort cleanup
+		}
+	}
 }
 
 // isProtectedBranch checks if a branch name is a common base branch that should not be deleted
@@ -418,6 +469,15 @@ func (m *Manager) MoveWorktree(oldPath, newPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to move worktree: %s", string(output))
 	}
+
+	// Create symlink from old path to new path for backward compatibility
+	// This ensures running Claude sessions with --add-dir to old path still work
+	if err := os.Symlink(newPath, oldPath); err != nil {
+		// Log but don't fail - the move succeeded, symlink is a nice-to-have
+		// The symlink might fail if something else created the old path
+		return nil
+	}
+
 	return nil
 }
 
