@@ -762,6 +762,25 @@ func (m *Manager) HasCommits(worktreePath string) (bool, error) {
 	return commitCount != "0", nil
 }
 
+// HasCommitsDifferentFromBase checks if the current branch has commits that differ from the base branch
+// This is used to verify there's something to create a PR for
+func (m *Manager) HasCommitsDifferentFromBase(worktreePath, baseBranch string) (bool, error) {
+	// Count commits that are in HEAD but not in the base branch
+	// This handles both local and remote base branches
+	cmd := exec.Command("git", "-C", worktreePath, "rev-list", "--count", fmt.Sprintf("%s..HEAD", baseBranch))
+	output, err := cmd.Output()
+	if err != nil {
+		// If the base branch doesn't exist locally, try with origin/
+		cmd = exec.Command("git", "-C", worktreePath, "rev-list", "--count", fmt.Sprintf("origin/%s..HEAD", baseBranch))
+		output, err = cmd.Output()
+		if err != nil {
+			return false, fmt.Errorf("failed to count commits different from base: %w", err)
+		}
+	}
+	commitCount := strings.TrimSpace(string(output))
+	return commitCount != "0", nil
+}
+
 // HasUnpushedCommits checks if there are commits that haven't been pushed
 func (m *Manager) HasUnpushedCommits(worktreePath, branch string) (bool, error) {
 	// First check if remote branch exists

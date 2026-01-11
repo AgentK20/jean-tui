@@ -1084,6 +1084,15 @@ func (m Model) createOrUpdatePR(worktreePath, branch string, title string, descr
 			return prCreatedMsg{err: fmt.Errorf("base branch not set. Press 'b' to set base branch"), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
 		}
 
+		// Check if the branch has any commits that differ from base branch
+		hasCommits, err := m.gitManager.HasCommitsDifferentFromBase(worktreePath, m.baseBranch)
+		if err != nil {
+			return prCreatedMsg{err: fmt.Errorf("failed to check for commits: %w", err), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
+		}
+		if !hasCommits {
+			return prCreatedMsg{err: fmt.Errorf("no commits to create PR - branch has no changes compared to %s", m.baseBranch), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
+		}
+
 		// Check if a PR already exists for this branch
 		existingPR, err := m.githubManager.GetPRForBranch(worktreePath, branch)
 		if err != nil {
@@ -1104,7 +1113,34 @@ func (m Model) createOrUpdatePR(worktreePath, branch string, title string, descr
 			return prCreatedMsg{prURL: existingPR.URL, branch: branch, worktreePath: worktreePath, prTitle: title, author: author, isDraft: m.prIsDraft}
 		}
 
-		// PR doesn't exist, create a new one (draft or ready for review based on user selection)
+		// PR doesn't exist, need to push the branch first before creating PR
+		// Check if remote branch exists
+		remoteBranchExists, err := m.gitManager.RemoteBranchExists(worktreePath, branch)
+		if err != nil {
+			return prCreatedMsg{err: fmt.Errorf("failed to check remote branch: %w", err), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
+		}
+
+		// Push the branch if it doesn't exist remotely or has unpushed commits
+		if !remoteBranchExists {
+			// Push the branch for the first time
+			if err := m.gitManager.Push(worktreePath, branch); err != nil {
+				return prCreatedMsg{err: fmt.Errorf("failed to push commits: %w", err), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
+			}
+		} else {
+			// Branch exists remotely, check if we have unpushed commits
+			hasUnpushed, err := m.gitManager.HasUnpushedCommits(worktreePath, branch)
+			if err != nil {
+				return prCreatedMsg{err: fmt.Errorf("failed to check for unpushed commits: %w", err), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
+			}
+			if hasUnpushed {
+				// Push new commits
+				if err := m.gitManager.Push(worktreePath, branch); err != nil {
+					return prCreatedMsg{err: fmt.Errorf("failed to push commits: %w", err), branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
+				}
+			}
+		}
+
+		// Create a new PR (draft or ready for review based on user selection)
 		prURL, err := m.githubManager.CreatePR(worktreePath, branch, m.baseBranch, title, description, m.prIsDraft)
 		if err != nil {
 			return prCreatedMsg{err: err, branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
