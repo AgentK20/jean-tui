@@ -1096,8 +1096,9 @@ func (m Model) createOrUpdatePR(worktreePath, branch string, title string, descr
 			author = user
 		}
 
-		// If PR exists, update it instead of creating a new one
-		if existingPR != nil {
+		// If an OPEN PR exists, update it instead of creating a new one
+		// Merged/closed PRs should not be updated - create a new PR instead
+		if existingPR != nil && strings.ToUpper(existingPR.Status) == "OPEN" {
 			if err := m.githubManager.UpdatePR(worktreePath, branch, title, description); err != nil {
 				return prCreatedMsg{err: err, branch: branch, worktreePath: worktreePath, isDraft: m.prIsDraft}
 			}
