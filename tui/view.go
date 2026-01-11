@@ -361,6 +361,7 @@ func (m Model) renderMinimalHelpBar() string {
 		"p push",
 		"P create PR",
 		"L local merge",
+		"W swap",
 		"g github",
 		"h help",
 		"q quit",
@@ -2042,6 +2043,7 @@ func (m Model) renderHelperModal() string {
 				{"b", "Change base branch for new worktrees"},
 				{"B", "Rename current branch"},
 				{"K", "Checkout/switch branch in main repo"},
+				{"W", "Swap to root (checkout worktree to main)"},
 			},
 		},
 		{

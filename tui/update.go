@@ -436,6 +436,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+	case rootCheckoutMsg:
+		if msg.err != nil {
+			cmd = m.showErrorNotification("Failed to checkout to root: "+msg.err.Error(), 4*time.Second)
+			return m, cmd
+		}
+		cmd = m.showSuccessNotification(fmt.Sprintf("Checked out '%s' to main repository", msg.branch), 3*time.Second)
+		return m, tea.Batch(cmd, m.loadWorktrees())
+
 	case baseBranchLoadedMsg:
 		m.baseBranch = msg.branch
 		// Load worktrees with lightweight mode for instant UI appearance
@@ -1879,6 +1887,20 @@ func (m Model) handleMainInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				return m, m.showErrorNotification("No PRs found for this worktree", 3*time.Second)
 			}
+		}
+
+	case "W":
+		// Swap to root: checkout worktree's branch to the main repository
+		// This is useful for viewing the worktree's code with dev servers running on the main repo
+		if wt := m.selectedWorktree(); wt != nil {
+			// Safety check: don't checkout if already on main repo worktree
+			if !strings.Contains(wt.Path, ".workspaces") {
+				return m, m.showWarningNotification("Already on main repository. Use 'K' to checkout a different branch.")
+			}
+
+			m.debugLog(fmt.Sprintf("W keybinding: checking out branch '%s' to main repository", wt.Branch))
+			cmd = m.showInfoNotification(fmt.Sprintf("Checking out '%s' to main repository...", wt.Branch))
+			return m, tea.Batch(cmd, m.checkoutToRoot(wt.Branch))
 		}
 
 	case "h":

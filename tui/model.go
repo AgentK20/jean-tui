@@ -502,6 +502,13 @@ type (
 		err error
 	}
 
+	// rootCheckoutMsg is the result of checking out a branch to the main repository
+	// This is used for the "swap to root" feature to quickly view a worktree's branch in the main repo
+	rootCheckoutMsg struct {
+		err    error
+		branch string
+	}
+
 	baseBranchLoadedMsg struct {
 		branch string
 	}
@@ -936,6 +943,29 @@ func (m Model) checkoutBranch(branch string) tea.Cmd {
 	return func() tea.Msg {
 		err := m.gitManager.CheckoutBranch(branch)
 		return branchCheckedOutMsg{err: err}
+	}
+}
+
+// checkoutToRoot checks out a branch to the main repository (root worktree)
+// This allows viewing a worktree's code in the main repo where dev servers are running
+func (m Model) checkoutToRoot(branch string) tea.Cmd {
+	return func() tea.Msg {
+		// Check for uncommitted changes in the main repo first
+		hasChanges, err := m.gitManager.HasUncommittedChanges(m.repoPath)
+		if err != nil {
+			return rootCheckoutMsg{err: fmt.Errorf("failed to check for uncommitted changes: %w", err), branch: branch}
+		}
+		if hasChanges {
+			return rootCheckoutMsg{err: fmt.Errorf("main repository has uncommitted changes - commit or stash them first"), branch: branch}
+		}
+
+		// Perform the checkout
+		err = m.gitManager.CheckoutBranch(branch)
+		if err != nil {
+			return rootCheckoutMsg{err: err, branch: branch}
+		}
+
+		return rootCheckoutMsg{err: nil, branch: branch}
 	}
 }
 
