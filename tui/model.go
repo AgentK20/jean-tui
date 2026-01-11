@@ -1505,6 +1505,33 @@ func (m Model) fetchRemoteForPR(worktreePath string) tea.Cmd {
 	}
 }
 
+// checkPRStatusBeforeCreate checks the actual status of a PR from GitHub
+// This is called when we have a locally-stored "open" PR to verify it's still open
+func (m Model) checkPRStatusBeforeCreate(existingPR *config.PRInfo, worktreePath, branch string) tea.Cmd {
+	return func() tea.Msg {
+		// Check actual status from GitHub
+		actualStatus, err := m.githubManager.GetPRStatus(existingPR.URL)
+		if err != nil {
+			// If we can't check status, assume it's closed and allow new PR creation
+			return prStatusCheckedMsg{
+				err:          nil, // Don't treat as error, just proceed
+				existingPR:   existingPR,
+				actualStatus: "closed", // Assume closed if we can't verify
+				worktreePath: worktreePath,
+				branch:       branch,
+			}
+		}
+
+		return prStatusCheckedMsg{
+			err:          nil,
+			existingPR:   existingPR,
+			actualStatus: actualStatus,
+			worktreePath: worktreePath,
+			branch:       branch,
+		}
+	}
+}
+
 // Push-only command functions (without PR creation)
 
 // generateBranchNameForPush generates an AI branch name for push operation
@@ -2166,6 +2193,16 @@ type aiPromptsLoadedMsg struct {
 // Message type for PR creation fetch completion
 type prFetchedForCreationMsg struct {
 	err error
+}
+
+// prStatusCheckedMsg is the result of checking actual PR status from GitHub
+// Used to determine if we should open existing PR or create a new one
+type prStatusCheckedMsg struct {
+	err          error
+	existingPR   *config.PRInfo // The PR we checked (from local config)
+	actualStatus string         // Actual status from GitHub: "open", "merged", "closed"
+	worktreePath string
+	branch       string
 }
 
 // Message type for onboarding status check
