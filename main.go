@@ -274,7 +274,9 @@ func sourceAndReexec(detector *install.Detector) error {
 
 	// Use syscall.Exec to replace the current process
 	// This way the new shell becomes the foreground process
-	execErr := syscall.Exec(shellPath, []string{shellName, "-c", sourceCmd}, cmd.Env)
+	// Use -i (interactive) so that RC files like .bashrc don't bail out early
+	// (Ubuntu's default .bashrc exits immediately for non-interactive shells)
+	execErr := syscall.Exec(shellPath, []string{shellName, "-i", "-c", sourceCmd}, cmd.Env)
 	if execErr != nil {
 		return fmt.Errorf("failed to execute shell: %w", execErr)
 	}
